@@ -486,27 +486,40 @@ class _PermissionHoursState extends State<PermissionHours> {
                     ),
                     const SizedBox(height: 20),
 
-                    // PORTRAIT EMPLOYEE IMAGE
+                    // DATE FORMATTING (Moved above image)
+                    Text(
+                      DateFormat('EEEE, MMM d, yyyy').format(DateTime.now()),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.blueGrey.shade700,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // CIRCULAR EMPLOYEE IMAGE WITH DYNAMIC BORDER
                     Container(
-                      width: MediaQuery.of(context).size.width * 0.55,
-                      height: MediaQuery.of(context).size.height * 0.32,
+                      width: MediaQuery.of(context).size.width * 0.44,
+                      height: MediaQuery.of(context).size.width * 0.44,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 1.5,
+                          color: _getOverallAttendanceStatus() == 'In Progress'
+                              ? Colors.amber.shade700
+                              : Colors.blue.shade700,
+                          width: 3,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 10,
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
                         ],
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
+                      child: ClipOval(
                         child: authProvider.employeeImageBytes != null
                             ? Image.memory(
                                 authProvider.employeeImageBytes!,
@@ -516,20 +529,11 @@ class _PermissionHoursState extends State<PermissionHours> {
                                 color: Colors.grey.shade100,
                                 child: const Icon(
                                   Icons.person,
-                                  size: 100,
+                                  size: 75,
                                   color: Colors.grey,
                                 ),
                               ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // DATE
-                    Text(
-                      DateFormat('EEEE, MMM d yyyy').format(DateTime.now()),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
                     ),
                     const SizedBox(height: 20),
 

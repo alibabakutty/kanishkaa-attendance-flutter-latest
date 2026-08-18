@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:attendance_app/authentication/auth_provider.dart';
 import 'package:attendance_app/modals/geopoint.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class MarkAttendance extends StatefulWidget {
   const MarkAttendance({super.key});
@@ -43,14 +44,24 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
   int _networkRetryCount = 0;
   static const int _maxNetworkRetries = 3;
 
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isOffline = false;
+
   @override
   void initState() {
     super.initState();
-    final baseUrl = dotenv.get('API_BASE_URL', fallback: 'http://192.168.1.4:8080');
+
+    final baseUrl = dotenv.get(
+      'API_BASE_URL',
+      fallback: 'http://192.168.1.4:8080',
+    );
+
     _attendanceService = AttendanceService(baseUrl: baseUrl);
-    
+
     WidgetsBinding.instance.addObserver(this);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeConnectivity();
       _loadScreenData();
       _initializeLocationTracking();
     });
@@ -58,19 +69,149 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
+
     _locationService.dispose();
+
     WidgetsBinding.instance.removeObserver(this);
+
     _remarksController.dispose();
+
     super.dispose();
+  }
+
+  Future<void> _initializeConnectivity() async {
+    final connectivity = Connectivity();
+
+    // Check current state immediately
+    final result = await connectivity.checkConnectivity();
+
+    if (!mounted) return;
+
+    _updateConnectivityStatus(result);
+
+    // Listen for changes
+    _connectivitySubscription =
+        connectivity.onConnectivityChanged.listen((result) {
+      if (!mounted) return;
+
+      _updateConnectivityStatus(result);
+    });
+  }
+
+  void _updateConnectivityStatus(List<ConnectivityResult> result) {
+    final bool offline = result.isEmpty ||
+        result.every((connection) => connection == ConnectivityResult.none);
+
+    if (_isOffline == offline) {
+      return;
+    }
+
+    setState(() {
+      _isOffline = offline;
+    });
+
+    if (offline) {
+      _showOfflineSnackBar();
+    } else {
+      _showOnlineSnackBar();
+
+      // Refresh attendance after reconnecting
+      _lastFetchTime = null;
+      _fetchTodayAttendance(forceRefresh: true);
+    }
+  }
+
+  void _showOfflineSnackBar() {
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          duration: Duration(days: 1),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+          content: Row(
+            children: [
+              Icon(
+                Icons.wifi_off,
+                color: Colors.white,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'No internet connection. Please check your network.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
+
+  void _showOnlineSnackBar() {
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
+          content: Row(
+            children: [
+              Icon(
+                Icons.wifi,
+                color: Colors.white,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Internet connection restored.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
+
+  Future<void> _checkConnectivityOnResume() async {
+    final result = await Connectivity().checkConnectivity();
+
+    if (!mounted) return;
+
+    _updateConnectivityStatus(result);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _lastFetchTime = null;
+
+      _checkConnectivityOnResume();
+
       _fetchTodayAttendance(forceRefresh: true);
+
       _initializeLocationTracking();
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    } else if (
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+
       _locationService.dispose();
     }
   }
@@ -186,6 +327,13 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
   Future<void> _executeAttendanceAction(String actionType) async {
     if (_isProcessing || _isOptimisticUpdating) return;
 
+    if (_isOffline) {
+      _showErrorSnackBar(
+        'No internet connection. Please reconnect before marking attendance.',
+      );
+      return;
+    }
+
     final String siteLabel = actionType == 'sitein'
         ? (_isCustomSite ? _remarksController.text.trim() : (_selectedSiteObject?['siteName'] ?? ""))
         : (_activeSiteName ?? "Default Site");
@@ -282,7 +430,7 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
       ]
     };
 
-    _sendAttendanceNetworkPayload(
+    await _sendAttendanceNetworkPayload(
       payload: bodyPayload,
       actionType: actionType,
       rollbackData: {
@@ -327,7 +475,7 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
         _networkRetryCount++;
         int backoffDuration = _networkRetryCount * 1500;
         await Future.delayed(Duration(milliseconds: backoffDuration));
-        _sendAttendanceNetworkPayload(
+        await _sendAttendanceNetworkPayload(
           payload: payload,
           actionType: actionType,
           rollbackData: rollbackData
@@ -431,6 +579,37 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    if (_isOffline)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade700,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.wifi_off,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Offline mode\nInternet connection unavailable.',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     ProfileHeaderWidget(
                       authProvider: authProvider,
                       status: status,

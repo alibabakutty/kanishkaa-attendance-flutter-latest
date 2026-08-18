@@ -314,7 +314,7 @@ class _ShiftLapTrackerViewState extends State<ShiftLapTrackerView> {
                     left: 12,
                     right: 12,
                     child: Card(
-                      color: const Color(0xFF273F4F).withOpacity(0.95),
+                      color: const Color(0xFF273F4F).withValues(alpha: 0.95),
                       elevation: 6,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -360,7 +360,7 @@ class _ShiftLapTrackerViewState extends State<ShiftLapTrackerView> {
             color: Colors.white,
             borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), topRight: Radius.circular(18)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, spreadRadius: 1)
+              BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 10, spreadRadius: 1)
             ],
           ),
           child: ListView.builder(

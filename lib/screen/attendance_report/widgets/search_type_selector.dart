@@ -25,7 +25,7 @@ class SearchTypeSelector extends StatelessWidget {
         ],
       ),
       child: DropdownButtonFormField<String>(
-        value: selectedType,
+        initialValue: selectedType,
         decoration: InputDecoration(
           labelText: 'Search By',
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

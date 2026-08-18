@@ -68,7 +68,7 @@ class ProfileHeaderWidget extends StatelessWidget {
           ),
         ),
         Chip(
-          backgroundColor: statusColor.withOpacity(0.15),
+          backgroundColor: statusColor.withValues(alpha: 0.15),
           label: Text(
             status,
             style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
@@ -224,16 +224,17 @@ class ActionCardWidget extends StatelessWidget {
             Text(
               isSubmitted
                   ? "Shift Ended"
-                  : (isAwaitingApproval
-                      ? "Approval Pending"
-                      : (hasActiveVisitSession ? "Active Site Session" : "Ready to Check-In")),
+                  : (hasActiveVisitSession
+                      ? "Active Site Session"
+                      : (isAwaitingApproval
+                          ? "Late Check-In (Pending Approval)"
+                          : "Ready to Check-In")),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const Divider(),
 
-            if (isAwaitingApproval) ...[
-              _buildAwaitingApprovalState(),
-            ] else if (hasActiveVisitSession) ...[
+            // PRIORITIZE ACTIVE VISIT: Always let user check out of a site even if approval is pending!
+            if (hasActiveVisitSession) ...[
               _buildActiveSessionState(),
             ] else if (!isSubmitted) ...[
               _buildCheckInState(),
@@ -241,8 +242,7 @@ class ActionCardWidget extends StatelessWidget {
 
             if (officeTimeIn != null &&
                 !hasActiveVisitSession &&
-                !isSubmitted &&
-                !isAwaitingApproval) ...[
+                !isSubmitted) ...[
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 10),
                 child: Divider(),
@@ -251,23 +251,6 @@ class ActionCardWidget extends StatelessWidget {
             ]
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildAwaitingApprovalState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Column(
-        children: [
-          Icon(Icons.lock_clock, size: 48, color: Colors.grey.shade400),
-          const SizedBox(height: 8),
-          Text(
-            'Awaiting Management Action',
-            style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold),
-          ),
-        ],
       ),
     );
   }
@@ -406,6 +389,16 @@ class SiteDropdownWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Safely resolve selected object by matching siteId
+    Map<String, dynamic>? matchedValue;
+    if (selectedSiteObject != null) {
+      matchedValue = siteMasterList.firstWhere(
+        (element) => element['siteId'] == selectedSiteObject!['siteId'],
+        orElse: () => siteMasterList.isNotEmpty ? siteMasterList.first : {},
+      );
+      if (matchedValue.isEmpty) matchedValue = null;
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -415,7 +408,7 @@ class SiteDropdownWidget extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<Map<String, dynamic>>(
-          value: selectedSiteObject,
+          value: matchedValue,
           hint: const Text('Select Target Workspace Location'),
           isExpanded: true,
           items: siteMasterList.map((siteMap) {

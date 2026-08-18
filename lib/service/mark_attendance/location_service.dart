@@ -71,6 +71,11 @@ class LocationService {
     }
   }
 
+  void stopTracking() {
+    _gpsStreamSubscription?.cancel();
+    _gpsStreamSubscription = null;
+  }
+
   void dispose() {
     _stopLocationTracking();
   }
