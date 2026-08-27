@@ -1,6 +1,7 @@
 // lib/services/attendance_service.dart
 import 'dart:convert';
 import 'dart:async';
+import 'package:attendance_app/modals/cumulative_attendance_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:attendance_app/modals/mark_attendance_data.dart';
@@ -298,5 +299,46 @@ class AttendanceService {
 
     final List data = jsonDecode(response.body);
     return List<Map<String, dynamic>>.from(data);
+  }
+
+  // -------------------------------
+  // GET CUMULATIVE ALL ATTENDANCE
+  // -------------------------------
+  Future<List<CumulativeAttendanceModel>>
+      getCumulativeAttendance({
+    required int year,
+    required int month,
+  }) async {
+    final url = Uri.parse(
+      "$baseUrl/api/v1/attendance-masters/cumulative/all",
+    ).replace(
+      queryParameters: {
+        'year': year.toString(),
+        'month': month.toString(),
+      },
+    );
+
+    final response = await http.get(
+      url,
+      headers: await _headers(),
+    ).timeout(
+      const Duration(seconds: 15),
+    );
+
+    final decoded = _handleResponse(response);
+
+    if (decoded is! List) {
+      throw Exception(
+        'Invalid cumulative attendance response from server',
+      );
+    }
+
+    return decoded
+        .map(
+          (e) => CumulativeAttendanceModel.fromJson(
+            e as Map<String, dynamic>,
+          ),
+        )
+        .toList();
   }
 }

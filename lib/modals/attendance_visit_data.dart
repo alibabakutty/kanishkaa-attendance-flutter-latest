@@ -4,7 +4,7 @@ class AttendanceVisitData {
   final int? id;
   final String? siteId;
   final String siteName;
-  final String visitType; // e.g., 'REGULAR_SITE', 'EQUIPMENT_PURCHASE'
+  final String visitType;
   final DateTime? timeIn;
   final GeoPoint? timeInLocation;
   final DateTime? timeOut;

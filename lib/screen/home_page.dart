@@ -1,6 +1,6 @@
 import 'package:attendance_app/authentication/auth_provider.dart';
 import 'package:attendance_app/screen/admin_approval/admin_approval_page.dart';
-import 'package:attendance_app/screen/attendance_report/attendance_history.dart';
+import 'package:attendance_app/screen/attendance_report/attendance_report.dart';
 import 'package:attendance_app/screen/employee_profiles.dart';
 import 'package:attendance_app/screen/mark_attendance/mark_attendance.dart';
 import 'package:flutter/material.dart';
@@ -230,7 +230,7 @@ class _HomePageState extends State<HomePage> {
                         begin: Alignment.topRight,
                         end: Alignment.bottomLeft,
                       ),
-                      onTap: () => _navigateTo(const AttendanceHistory()),
+                      onTap: () => _navigateTo(const AttendanceReport()),
                     ),
                     _buildDashboardCard(
                       icon: Icons.schedule,

@@ -1,6 +1,8 @@
 import 'package:attendance_app/modals/mark_attendance_data.dart';
+import 'package:attendance_app/screen/attendance_report/widgets/attendance_search_input_fields.dart';
 import 'package:attendance_app/service/mark_attendance/attendance_service.dart';
 import 'package:attendance_app/service/reports/dayend_excel_export_service.dart';
+import 'package:attendance_app/service/reports/monthend_cumulative_service.dart';
 import 'package:attendance_app/service/reports/monthend_excel_export_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -8,20 +10,19 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:attendance_app/authentication/auth_provider.dart';
 import 'widgets/search_type_selector.dart';
-import 'widgets/text_input_field.dart';
 import 'widgets/column_selector.dart';
 import 'widgets/attendance_table.dart';
 import 'utils/attendance_report_constants.dart';
 import 'utils/attendance_report_helpers.dart';
 
-class AttendanceHistory extends StatefulWidget {
-  const AttendanceHistory({super.key});
+class AttendanceReport extends StatefulWidget {
+  const AttendanceReport({super.key});
 
   @override
-  State<AttendanceHistory> createState() => _AttendanceHistoryState();
+  State<AttendanceReport> createState() => _AttendanceReportState();
 }
 
-class _AttendanceHistoryState extends State<AttendanceHistory> {
+class _AttendanceReportState extends State<AttendanceReport> {
   late AttendanceService _attendanceService;
   final _employeeNameController = TextEditingController();
   final _employeeIdController = TextEditingController();
@@ -38,7 +39,6 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
   List<String> _selectedColumns = List.from(AttendanceReportConstants.defaultColumns);
   bool _sortAscending = true;
   int _sortColumnIndex = 0;
-  
   // Add this for export state
   bool _isExporting = false;
 
@@ -267,112 +267,95 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
   }
 
   Future<void> _exportToExcel({required String exportType}) async {
-    if (_attendanceList.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No attendance records to export'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isExporting = true;
-    });
-
     try {
-      // Prepare parameters for export
-      String? startDateStr;
-      String? endDateStr;
-      
-      if (_searchType == 'date') {
-        if (_specificDate != null) {
-          startDateStr = DateFormat('dd-MM-yyyy').format(_specificDate!);
-          endDateStr = startDateStr;
-        } else if (_startDate != null && _endDate != null) {
-          startDateStr = DateFormat('dd-MM-yyyy').format(_startDate!);
-          endDateStr = DateFormat('dd-MM-yyyy').format(_endDate!);
+      DateTime? selectedPeriod;
+
+      // 1. Prompt for Month/Year selection if Cumulative
+      if (exportType == 'cumulative') {
+        selectedPeriod = await _showMonthYearPicker(context);
+        
+        // User canceled the date picker dialog
+        if (selectedPeriod == null) return; 
+      } else {
+        if (_attendanceList.isEmpty) {
+          _showSnackBar('No attendance records to export', Colors.orange);
+          return;
         }
       }
 
-      bool includeLocationData = true;
+      setState(() {
+        _isExporting = true;
+      });
+
       String filePath;
 
-      // Choose export service based on type
-      if (exportType == 'dayend') {
-        filePath = await DayEndExcelExportService.exportToExcel(
-          _attendanceList,
-          startDate: startDateStr,
-          endDate: endDateStr,
-          searchType: _searchType,
-          employeeName: _employeeNameController.text.trim().isNotEmpty 
-              ? _employeeNameController.text.trim() 
-              : null,
-          employeeId: _employeeIdController.text.trim().isNotEmpty 
-              ? _employeeIdController.text.trim() 
-              : null,
-          mobileNumber: _employeeMobileNumberController.text.trim().isNotEmpty 
-              ? _employeeMobileNumberController.text.trim() 
-              : null,
-          includeLocationData: includeLocationData,
+      if (exportType == 'cumulative') {
+        final year = selectedPeriod!.year;
+        final month = selectedPeriod.month;
+
+        // 2. Fetch cumulative dataset for chosen month & year
+        final cumulativeData = await _attendanceService.getCumulativeAttendance(
+          year: year,
+          month: month,
+        );
+
+        if (cumulativeData.isEmpty) {
+          if (mounted) {
+            _showSnackBar('No records found for selected period', Colors.orange);
+          }
+          return;
+        }
+
+        // 3. Format header title (e.g., "AUGUST - 2026-2027")
+        final monthStr = DateFormat('MMMM').format(selectedPeriod).toUpperCase();
+        final startYear = month >= 4 ? year : year - 1;
+        final monthYearTitle = '$monthStr - $startYear-${startYear + 1}';
+
+        // 4. Generate Excel Report
+        filePath = await MonthendCumulativeService.exportToExcel(
+          cumulativeData,
+          monthYearTitle: monthYearTitle,
+          year: year,
+          month: month,
         );
       } else {
-        // MonthEnd export
-        filePath = await MonthEndExcelExportService.exportToExcel(
+        // DayEnd and MonthEnd handling
+        String? startDateStr;
+        String? endDateStr;
+        
+        if (_searchType == 'date') {
+          if (_specificDate != null) {
+            startDateStr = DateFormat('dd-MM-yyyy').format(_specificDate!);
+            endDateStr = startDateStr;
+          } else if (_startDate != null && _endDate != null) {
+            startDateStr = DateFormat('dd-MM-yyyy').format(_startDate!);
+            endDateStr = DateFormat('dd-MM-yyyy').format(_endDate!);
+          }
+        }
+
+        final exportService = exportType == 'dayend' 
+            ? DayEndExcelExportService.exportToExcel
+            : MonthEndExcelExportService.exportToExcel;
+
+        filePath = await exportService(
           _attendanceList,
           startDate: startDateStr,
           endDate: endDateStr,
           searchType: _searchType,
-          employeeName: _employeeNameController.text.trim().isNotEmpty 
-              ? _employeeNameController.text.trim() 
-              : null,
-          employeeId: _employeeIdController.text.trim().isNotEmpty 
-              ? _employeeIdController.text.trim() 
-              : null,
-          mobileNumber: _employeeMobileNumberController.text.trim().isNotEmpty 
-              ? _employeeMobileNumberController.text.trim() 
-              : null,
-          includeLocationData: includeLocationData,
+          employeeName: _getControllerValue(_employeeNameController),
+          employeeId: _getControllerValue(_employeeIdController),
+          mobileNumber: _getControllerValue(_employeeMobileNumberController),
+          includeLocationData: true,
         );
       }
 
-      // Show success message
       if (mounted) {
-        final exportTypeName = exportType == 'dayend' ? 'Day End' : 'Month End';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '✅ $exportTypeName Report Exported Successfully!',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  'File saved at: $filePath',
-                  style: const TextStyle(fontSize: 11),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        final label = exportType == 'dayend' ? 'Day End' : exportType == 'cumulative' ? 'Cumulative' : 'Month End';
+        _showSnackBar('✅ $label Report Exported Successfully!\nFile saved at: $filePath', Colors.green);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '❌ Failed to export: ${e.toString()}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        _showSnackBar('❌ Failed to export: ${e.toString()}', Colors.red);
       }
     } finally {
       if (mounted) {
@@ -383,334 +366,32 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
     }
   }
 
-  Widget _buildSearchInputFields() {
-    switch (_searchType) {
-      case 'name':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextInputField(
-              label: 'Employee Name',
-              controller: _employeeNameController,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _employeeNameController.text.trim().isNotEmpty
-                    ? _searchAttendanceHistories
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade700,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Search by Name',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-          ],
-        );
-      case 'id':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextInputField(
-              label: 'Employee ID',
-              controller: _employeeIdController,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _employeeIdController.text.trim().isNotEmpty
-                    ? _searchAttendanceHistories
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade700,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Search by ID',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-          ],
-        );
-      case 'mobile':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextInputField(
-              label: 'Mobile Number',
-              controller: _employeeMobileNumberController,
-              keyboardType: TextInputType.phone,
-              hintText: 'Enter mobile number',
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _employeeMobileNumberController.text.trim().isNotEmpty
-                    ? _searchAttendanceHistories
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade700,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Search by Mobile',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-          ],
-        );
-      case 'date':
-      default:
-        return _buildDateSearchOptions();
-    }
+  // Utility Helpers
+  String? _getControllerValue(TextEditingController controller) {
+    final text = controller.text.trim();
+    return text.isNotEmpty ? text : null;
   }
 
-  Widget _buildDateSearchOptions() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Specific Date',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                      value: 'specific',
-                      groupValue: _specificDate != null ||
-                              (_startDate == null && _endDate == null)
-                          ? 'specific'
-                          : 'range',
-                      onChanged: (value) {
-                        setState(() {
-                          _startDate = null;
-                          _endDate = null;
-                          if (_specificDate == null) {
-                            _specificDate = DateTime.now();
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                  Expanded(
-                    child: RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Date Range',
-                          style: TextStyle(fontSize: 14)),
-                      value: 'range',
-                      groupValue: _startDate != null || _endDate != null
-                          ? 'range'
-                          : 'specific',
-                      onChanged: (value) {
-                        setState(() {
-                          _specificDate = null;
-                          if (_startDate == null) _startDate = DateTime.now();
-                          if (_endDate == null) _endDate = DateTime.now();
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (_specificDate != null) _buildSpecificDateSelector(),
-              if (_startDate != null && _endDate != null)
-                _buildDateRangeSelector(),
-            ],
-          ),
-        ),
-      ],
+  void _showSnackBar(String text, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: color, duration: const Duration(seconds: 4)),
     );
   }
 
-  Widget _buildDateRangeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _selectDate(context, isStartDate: true),
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Start Date',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                  ),
-                  child: Text(
-                    _startDate != null
-                        ? DateFormat('dd-MM-yyyy').format(_startDate!)
-                        : 'Select start date',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: _startDate != null
-                          ? Colors.black87
-                          : Colors.grey[600],
-                      fontWeight: _startDate != null
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _selectDate(context, isEndDate: true),
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'End Date',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                  ),
-                  child: Text(
-                    _endDate != null
-                        ? DateFormat('dd-MM-yyyy').format(_endDate!)
-                        : 'Select end date',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color:
-                          _endDate != null ? Colors.black87 : Colors.grey[600],
-                      fontWeight: _endDate != null
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: (_startDate != null && _endDate != null)
-                ? _searchAttendanceHistories
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange.shade700,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
-              'Search by Date Range',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-      ],
+  Future<DateTime?> _showMonthYearPicker(BuildContext context) async {
+    final now = DateTime.now();
+    
+    // Uses built-in date picker restricted to year and month selection
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _specificDate ?? now,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: 'SELECT REPORT MONTH & YEAR',
     );
-  }
 
-  Widget _buildSpecificDateSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => _selectDate(context, isSpecificDate: true),
-          child: InputDecorator(
-            decoration: InputDecoration(
-              labelText: 'Select Date',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              filled: true,
-              fillColor: Colors.grey.shade50,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 12,
-              ),
-            ),
-            child: Text(
-              _specificDate != null
-                  ? DateFormat('dd-MM-yyyy').format(_specificDate!)
-                  : 'Select a date',
-              style: TextStyle(
-                fontSize: 14,
-                color:
-                    _specificDate != null ? Colors.black87 : Colors.grey[600],
-                fontWeight:
-                    _specificDate != null ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed:
-                _specificDate != null ? _searchAttendanceHistories : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange.shade700,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
-              'Search by Specific Date',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-      ],
-    );
+    return pickedDate;
   }
 
   Widget _buildAttendanceList() {
@@ -808,12 +489,10 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
             });
           },
         ),
-        // Removed the Row with Total Records and Export button from here
       ],
     );
   }
 
-  // New method for export dropdown
   Widget _buildExportDropdown() {
     return Container(
       decoration: BoxDecoration(
@@ -901,6 +580,29 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
               ],
             ),
           ),
+          PopupMenuItem<String>(
+            value: 'cumulative',
+            child: Row(
+              children: [
+                const Icon(Icons.summarize, size: 16, color: Colors.amber),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Cumulative Report',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    Text(
+                      'Monthly hours & permissions summary',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -969,7 +671,32 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
                 },
               ),
               const SizedBox(height: 12),
-              _buildSearchInputFields(),
+              // _buildSearchInputFields(),
+              AttendanceSearchInputFields(
+                searchType: _searchType,
+                employeeNameController: _employeeNameController,
+                employeeIdController: _employeeIdController,
+                employeeMobileNumberController: _employeeMobileNumberController,
+                specificDate: _specificDate,
+                startDate: _startDate,
+                endDate: _endDate,
+                onSearch: _searchAttendanceHistories,
+                onDateRangeTypeChanged: (specDate, stDate, eDate) {
+                  setState(() {
+                    _specificDate = specDate;
+                    _startDate = stDate;
+                    _endDate = eDate;
+                  });
+                },
+                onSelectDate: (isStartDate, isEndDate, isSpecificDate) {
+                  _selectDate(
+                    context,
+                    isStartDate: isStartDate,
+                    isEndDate: isEndDate,
+                    isSpecificDate: isSpecificDate,
+                  );
+                },
+              ),
               const SizedBox(height: 12),
               _buildAttendanceList(),
             ],

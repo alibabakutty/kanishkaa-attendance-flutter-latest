@@ -1,5 +1,5 @@
 import 'package:attendance_app/authentication/auth_provider.dart';
-import 'package:attendance_app/screen/attendance_report/attendance_history.dart';
+import 'package:attendance_app/screen/attendance_report/attendance_report.dart';
 import 'package:attendance_app/screen/employee_login_page.dart';
 import 'package:attendance_app/screen/employee_master.dart';
 import 'package:attendance_app/screen/employee_profiles.dart';
@@ -54,7 +54,7 @@ class AttendanceApp extends StatelessWidget {
         '/employeeProfiles': (context) => const EmployeeProfiles(),
         '/employeeMaster': (context) => const EmployeeMaster(),
         '/markAttendance': (context) => const MarkAttendance(),
-        '/attendanceHistory': (context) => const AttendanceHistory()
+        '/attendanceHistory': (context) => const AttendanceReport()
       },
     );
   }

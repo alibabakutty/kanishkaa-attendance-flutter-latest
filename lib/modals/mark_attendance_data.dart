@@ -1,5 +1,5 @@
 import 'package:attendance_app/modals/geopoint.dart';
-import 'attendance_visit_data.dart'; // Import your child model path here
+import 'attendance_visit_data.dart';
 
 class MarkAttendanceData {
   final String employeeId;
@@ -38,7 +38,7 @@ class MarkAttendanceData {
     this.officeTimeOut,
     this.officeTimeOutLocation,
     this.totalAttendanceHours,
-    required this.visits, // Now required in architecture setup
+    required this.visits,
     this.permissionTimeIn,
     this.permissionTimeInLocation,
     this.permissionTimeOut,
