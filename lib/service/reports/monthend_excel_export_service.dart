@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 class MonthEndExcelExportService {
   static const _borderColor = '#808080';
-  static const _headerColor = '#92D050'; // Bright light green header matching the layout
+  static const _headerColor = '#92D050'; // Bright light green header
   static const _bannerColor = '#FFFF00'; // Bright Yellow banner
   static const _evenRowColor = '#F5F5F5';
   static const _statusPresentColor = '#C6EFCE';
@@ -74,8 +74,8 @@ class MonthEndExcelExportService {
     String dateLabel,
     List<MarkAttendanceData> dailyList,
   ) {
-    // 1. Full-width Section Banner Row - LARGER FONT
-    final bannerRange = sheet.getRangeByIndex(startRow, 1, startRow, 15);
+    // 1. Full-width Section Banner Row (Spans all 14 columns)
+    final bannerRange = sheet.getRangeByIndex(startRow, 1, startRow, 14);
     bannerRange.merge();
     bannerRange.setText('KANISHKAA ATTENDANCE - $dateLabel');
     bannerRange.cellStyle.bold = true;
@@ -89,11 +89,19 @@ class MonthEndExcelExportService {
     final hRow1 = startRow + 1;
     final hRow2 = startRow + 2;
 
-    // Merge standard columns vertically across both header rows
+    // Standard columns vertically merged across both header rows
     final standardHeaders = [
-      'S.No', 'Employee ID', 'Employee Name', 'Site Name', 'Device Name',
-      'Time In', 'Status In', 'Time Out', 'Status Out', 
-      'Attendance Hours (1)', 'Attendance Hours (2)', 'Attendance Status'
+      'S.No', 
+      'Employee ID', 
+      'Employee Name', 
+      'Site Name', 
+      'Device Name',
+      'Time In', 
+      'Status In', 
+      'Time Out', 
+      'Status Out', 
+      'Attendance Hours', 
+      'Attendance Status'
     ];
 
     for (int i = 0; i < standardHeaders.length; i++) {
@@ -103,8 +111,8 @@ class MonthEndExcelExportService {
       _styleHeaderCell(cellRange);
     }
 
-    // "Permission" Master Header spanning columns 13, 14, and 15
-    final permissionMaster = sheet.getRangeByIndex(hRow1, 13, hRow1, 15);
+    // "Permission" Master Header spanning columns 12, 13, and 14
+    final permissionMaster = sheet.getRangeByIndex(hRow1, 12, hRow1, 14);
     permissionMaster.merge();
     permissionMaster.setText('Permission');
     _styleHeaderCell(permissionMaster);
@@ -112,7 +120,7 @@ class MonthEndExcelExportService {
     // Permission Sub-headers on Row 2
     final permSubs = ['Permission Time In', 'Permission Time Out', 'Permission Hours'];
     for (int i = 0; i < permSubs.length; i++) {
-      final cell = sheet.getRangeByIndex(hRow2, 13 + i);
+      final cell = sheet.getRangeByIndex(hRow2, 12 + i);
       cell.setText(permSubs[i]);
       _styleHeaderCell(cell);
     }
@@ -123,13 +131,13 @@ class MonthEndExcelExportService {
       final record = dailyList[i];
       final row = dataStartRow + i;
 
-      // Extract and safely combine all unique site names from the visits collection array
+      // Extract unique site names from the visits array
       String sitesText = '-';
       if (record.visits.isNotEmpty) {
         final siteNames = record.visits
             .map((v) => v.siteName)
             .where((name) => name.trim().isNotEmpty)
-            .toSet() // Deduplicates matching entries
+            .toSet()
             .toList();
         if (siteNames.isNotEmpty) {
           sitesText = siteNames.join(', ');
@@ -145,7 +153,6 @@ class MonthEndExcelExportService {
       sheet.getRangeByIndex(row, 3).setText(record.employeeName);
       sheet.getRangeByIndex(row, 3).cellStyle.fontSize = 12;
       
-      // Site Name (FIXED: Uses multi-site loop parsing string)
       sheet.getRangeByIndex(row, 4).setText(sitesText);
       sheet.getRangeByIndex(row, 4).cellStyle.fontSize = 12;
       
@@ -174,19 +181,14 @@ class MonthEndExcelExportService {
       statusOutCell.cellStyle.bold = true;
       statusOutCell.cellStyle.fontColor = record.officeTimeOut != null ? '#006400' : '#8B0000';
       
-      // Attendance hours (Split layout matching image)
-      final hours1Cell = sheet.getRangeByIndex(row, 10);
-      hours1Cell.setText(record.totalAttendanceHours ?? '-');
-      hours1Cell.cellStyle.fontSize = 12;
-      hours1Cell.cellStyle.bold = true;
-
-      final hours2Cell = sheet.getRangeByIndex(row, 11);
-      hours2Cell.setText(record.totalAttendanceHours ?? '-'); 
-      hours2Cell.cellStyle.fontSize = 12;
-      hours2Cell.cellStyle.bold = true;
+      // Single Attendance Hours Column
+      final hoursCell = sheet.getRangeByIndex(row, 10);
+      hoursCell.setText(record.totalAttendanceHours ?? '-');
+      hoursCell.cellStyle.fontSize = 12;
+      hoursCell.cellStyle.bold = true;
       
       // Attendance Status Colors
-      final statusCell = sheet.getRangeByIndex(row, 12);
+      final statusCell = sheet.getRangeByIndex(row, 11);
       final status = record.status.toUpperCase();
       statusCell.setText(status);
       statusCell.cellStyle.fontSize = 12;
@@ -199,20 +201,20 @@ class MonthEndExcelExportService {
         statusCell.cellStyle.backColor = status == 'HALF_DAY' ? _statusHalfDayColor : _statusAbsentColor;
       }
 
-      // Permission Columns
-      sheet.getRangeByIndex(row, 13).setText(record.permissionTimeIn != null ? _formatTime(record.permissionTimeIn!) : '-');
+      // Permission Columns (Shifted to 12, 13, 14)
+      sheet.getRangeByIndex(row, 12).setText(record.permissionTimeIn != null ? _formatTime(record.permissionTimeIn!) : '-');
+      sheet.getRangeByIndex(row, 12).cellStyle.fontSize = 12;
+      
+      sheet.getRangeByIndex(row, 13).setText(record.permissionTimeOut != null ? _formatTime(record.permissionTimeOut!) : '-');
       sheet.getRangeByIndex(row, 13).cellStyle.fontSize = 12;
       
-      sheet.getRangeByIndex(row, 14).setText(record.permissionTimeOut != null ? _formatTime(record.permissionTimeOut!) : '-');
-      sheet.getRangeByIndex(row, 14).cellStyle.fontSize = 12;
-      
-      final permHoursCell = sheet.getRangeByIndex(row, 15);
+      final permHoursCell = sheet.getRangeByIndex(row, 14);
       permHoursCell.setText(record.totalPermissionHours ?? '-');
       permHoursCell.cellStyle.fontSize = 12;
       permHoursCell.cellStyle.bold = true;
 
       // Row styling & bounds formatting updates
-      final rowRange = sheet.getRangeByIndex(row, 1, row, 15);
+      final rowRange = sheet.getRangeByIndex(row, 1, row, 14);
       _addBorders(rowRange);
       rowRange.cellStyle.vAlign = xlsio.VAlignType.center;
       
@@ -233,10 +235,8 @@ class MonthEndExcelExportService {
       sheet.getRangeByIndex(row, 12).cellStyle.hAlign = xlsio.HAlignType.center;
       sheet.getRangeByIndex(row, 13).cellStyle.hAlign = xlsio.HAlignType.center;
       sheet.getRangeByIndex(row, 14).cellStyle.hAlign = xlsio.HAlignType.center;
-      sheet.getRangeByIndex(row, 15).cellStyle.hAlign = xlsio.HAlignType.center;
     }
 
-    // Return the last row used by this table section
     return dataStartRow + dailyList.length - 1;
   }
 
@@ -252,27 +252,24 @@ class MonthEndExcelExportService {
   }
 
   static void _applyFormatting(xlsio.Worksheet sheet, int totalRows) {
-    for (int i = 1; i <= 15; i++) {
+    for (int i = 1; i <= 14; i++) {
       sheet.autoFitColumn(i);
     }
     
-    // Safety buffer adjustments for text content wrap sizing maps
-    sheet.getRangeByIndex(1, 3, totalRows, 3).columnWidth = 25; // Employee Name
-    sheet.getRangeByIndex(1, 4, totalRows, 4).columnWidth = 32; // Site Name list layout
-    sheet.getRangeByIndex(1, 5, totalRows, 5).columnWidth = 15; // Device Name
-    sheet.getRangeByIndex(1, 7, totalRows, 7).columnWidth = 14; // Status In
-    sheet.getRangeByIndex(1, 9, totalRows, 9).columnWidth = 14; // Status Out
-    sheet.getRangeByIndex(1, 10, totalRows, 10).columnWidth = 16; // Hours 1
-    sheet.getRangeByIndex(1, 11, totalRows, 11).columnWidth = 16; // Hours 2
-    sheet.getRangeByIndex(1, 12, totalRows, 12).columnWidth = 18; // Attendance Status
-    
     sheet.getRangeByIndex(1, 1, totalRows, 1).columnWidth = 8;   // S.No
-    sheet.getRangeByIndex(1, 2, totalRows, 2).columnWidth = 14;  // ID
-    sheet.getRangeByIndex(1, 6, totalRows, 6).columnWidth = 12;  // In
-    sheet.getRangeByIndex(1, 8, totalRows, 8).columnWidth = 12;  // Out
-    sheet.getRangeByIndex(1, 13, totalRows, 13).columnWidth = 15; // Perm In
-    sheet.getRangeByIndex(1, 14, totalRows, 14).columnWidth = 15; // Perm Out
-    sheet.getRangeByIndex(1, 15, totalRows, 15).columnWidth = 15; // Perm Total
+    sheet.getRangeByIndex(1, 2, totalRows, 2).columnWidth = 14;  // Employee ID
+    sheet.getRangeByIndex(1, 3, totalRows, 3).columnWidth = 25;  // Employee Name
+    sheet.getRangeByIndex(1, 4, totalRows, 4).columnWidth = 32;  // Site Name
+    sheet.getRangeByIndex(1, 5, totalRows, 5).columnWidth = 15;  // Device Name
+    sheet.getRangeByIndex(1, 6, totalRows, 6).columnWidth = 12;  // Time In
+    sheet.getRangeByIndex(1, 7, totalRows, 7).columnWidth = 14;  // Status In
+    sheet.getRangeByIndex(1, 8, totalRows, 8).columnWidth = 12;  // Time Out
+    sheet.getRangeByIndex(1, 9, totalRows, 9).columnWidth = 14;  // Status Out
+    sheet.getRangeByIndex(1, 10, totalRows, 10).columnWidth = 18; // Attendance Hours
+    sheet.getRangeByIndex(1, 11, totalRows, 11).columnWidth = 18; // Attendance Status
+    sheet.getRangeByIndex(1, 12, totalRows, 12).columnWidth = 18; // Permission Time In
+    sheet.getRangeByIndex(1, 13, totalRows, 13).columnWidth = 18; // Permission Time Out
+    sheet.getRangeByIndex(1, 14, totalRows, 14).columnWidth = 18; // Permission Hours
   }
 
   static void _addBorders(xlsio.Range range) {
