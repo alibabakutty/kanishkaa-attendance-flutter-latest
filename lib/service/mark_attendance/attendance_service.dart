@@ -1,4 +1,3 @@
-// lib/services/attendance_service.dart
 import 'dart:convert';
 import 'dart:async';
 import 'package:attendance_app/modals/cumulative_attendance_model.dart';
@@ -14,9 +13,7 @@ class AttendanceService {
     required this.baseUrl,
   });
 
-  // -------------------------------
   // TOKEN MANAGEMENT
-  // -------------------------------
   Future<String?> _getToken() async {
     return await _storage.read(key: "jwt_token");
   }
@@ -30,9 +27,7 @@ class AttendanceService {
     };
   }
 
-  // -------------------------------
   // RESPONSE HANDLER
-  // -------------------------------
   dynamic _handleResponse(http.Response response) {
     final decoded = jsonDecode(response.body);
 
@@ -56,9 +51,7 @@ class AttendanceService {
     }
   }
 
-  // -------------------------------
   // CREATE Attendance Master
-  // -------------------------------
   Future<MarkAttendanceData> createAttendance({
     required MarkAttendanceData data,
   }) async {
@@ -74,9 +67,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // MARK Attendance (Site Check-In / Check-Out)
-  // -------------------------------
   Future<MarkAttendanceData> markAttendance({
     required MarkAttendanceData data,
   }) async {
@@ -92,9 +83,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // GET BY ID
-  // -------------------------------
   Future<MarkAttendanceData> getById(int id) async {
     final url = Uri.parse("$baseUrl/api/v1/attendance-masters/$id");
 
@@ -107,9 +96,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // GET TODAY ATTENDANCE
-  // -------------------------------
   Future<MarkAttendanceData> getTodayAttendance(String employeeName) async {
     final url = Uri.parse("$baseUrl/api/v1/attendance-masters/today/$employeeName");
 
@@ -122,9 +109,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // SEARCH BY MOBILE AND DATE
-  // -------------------------------
   Future<MarkAttendanceData?> getAttendanceByMobileAndDate({
     required String mobileNumber,
     required String date,
@@ -149,9 +134,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // GET ALL
-  // -------------------------------
   Future<List<MarkAttendanceData>> getAllAttendance() async {
     final url = Uri.parse("$baseUrl/api/v1/attendance-masters");
 
@@ -166,9 +149,7 @@ class AttendanceService {
     return attendanceList.map((e) => MarkAttendanceData.fromJson(e)).toList();
   }
 
-  // -------------------------------
   // UPDATE
-  // -------------------------------
   Future<MarkAttendanceData> updateAttendance({
     required int id,
     required MarkAttendanceData data,
@@ -185,9 +166,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // UPDATE BY MOBILE AND DATE
-  // -------------------------------
   Future<MarkAttendanceData> updateAttendanceByMobileAndDate({
     required String mobileNumber,
     required String date,
@@ -210,9 +189,7 @@ class AttendanceService {
     return MarkAttendanceData.fromJson(decoded);
   }
 
-  // -------------------------------
   // DELETE
-  // -------------------------------
   Future<void> deleteAttendance(int id) async {
     final url = Uri.parse("$baseUrl/api/v1/attendance-masters/$id");
 
@@ -226,9 +203,7 @@ class AttendanceService {
     }
   }
 
-  // -------------------------------
   // SITE NAME MASTERS
-  // -------------------------------
   Future<List<Map<String, dynamic>>> fetchSiteNames() async {
     final url = Uri.parse("$baseUrl/api/v1/site-name-masters");
 
@@ -245,9 +220,7 @@ class AttendanceService {
     return List<Map<String, dynamic>>.from(data);
   }
 
-  // -------------------------------
   // LEGACY SUPPORT METHODS (for backward compatibility)
-  // -------------------------------
   
   // This method converts the legacy payload format to MarkAttendanceData
   Future<dynamic> markAttendanceLegacy(Map<String, dynamic> payload) async {
@@ -301,9 +274,7 @@ class AttendanceService {
     return List<Map<String, dynamic>>.from(data);
   }
 
-  // -------------------------------
   // GET CUMULATIVE ALL ATTENDANCE
-  // -------------------------------
   Future<List<CumulativeAttendanceModel>>
       getCumulativeAttendance({
     required int year,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:attendance_app/screen/mark_attendance/mark_attendance_helper.dart';
 import 'package:attendance_app/service/mark_attendance/attendance_service.dart';
 import 'package:attendance_app/service/mark_attendance/location_service.dart';
+import 'package:attendance_app/service/mark_attendance/network_quality_service.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -29,6 +30,7 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
   bool _isLoading = true;
   bool _isProcessing = false;
   bool _isAwaitingApproval = false;
+  bool _isPoorNetwork = false;
 
   List<Map<String, dynamic>> _siteMasterList = [];
   Map<String, dynamic>? _selectedSiteObject;
@@ -53,7 +55,7 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
 
     final baseUrl = dotenv.get(
       'API_BASE_URL',
-      fallback: 'http://192.168.1.4:8080',
+      fallback: 'http://192.232.33.53:8080',
     );
 
     _attendanceService = AttendanceService(baseUrl: baseUrl);
@@ -99,27 +101,84 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
     });
   }
 
-  void _updateConnectivityStatus(List<ConnectivityResult> result) {
+  // 2. Modify _updateConnectivityStatus method
+  void _updateConnectivityStatus(List<ConnectivityResult> result) async {
     final bool offline = result.isEmpty ||
         result.every((connection) => connection == ConnectivityResult.none);
 
-    if (_isOffline == offline) {
+    if (offline) {
+      if (!mounted) return;
+      setState(() {
+        _isOffline = true;
+        _isPoorNetwork = false;
+      });
+      _showOfflineSnackBar();
       return;
     }
 
+    // Set transient state while probing network
+    final String checkEndpoint = '${_attendanceService.baseUrl}/actuator/health';
+    final quality = await NetworkQualityService.checkNetworkQuality(checkEndpoint);
+
+    if (!mounted) return;
+
+    final bool wasPoor = _isPoorNetwork;
+    final bool wasOffline = _isOffline;
+
     setState(() {
-      _isOffline = offline;
+      _isOffline = (quality == NetworkQuality.offline);
+      _isPoorNetwork = (quality == NetworkQuality.poor);
     });
 
-    if (offline) {
+    if (_isOffline) {
       _showOfflineSnackBar();
+    } else if (_isPoorNetwork) {
+      // Only show SnackBar if transitioning into poor network state
+      if (!wasPoor) {
+        _showPoorNetworkSnackBar();
+      }
     } else {
-      _showOnlineSnackBar();
-
-      // Refresh attendance after reconnecting
+      // Connection is strong
+      if (wasOffline || wasPoor) {
+        _showOnlineSnackBar();
+      }
       _lastFetchTime = null;
       _fetchTodayAttendance(forceRefresh: true);
     }
+  }
+
+  // 3. Add Poor Network SnackBar helper
+  void _showPoorNetworkSnackBar() {
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.orange.shade800,
+          content: const Row(
+            children: [
+              Icon(
+                Icons.network_check,
+                color: Colors.white,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Poor network connection detected. Operations may take longer or fail. Please check your network or retry.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 
   void _showOfflineSnackBar() {
@@ -281,13 +340,28 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
         _isSubmitted = _officeTimeOut != null;
 
         if (!_isAwaitingApproval && data['visits'] != null && (data['visits'] as List).isNotEmpty) {
-          final lastVisit = (data['visits'] as List).last;
-          if (lastVisit['timeOut'] == null) {
+          final List<dynamic> visits = data['visits'];
+
+          // 1. Check if ANY visit is currently open (timeOut is null or empty)
+          final activeVisit = visits.firstWhere(
+            (v) => v['timeOut'] == null || v['timeOut'].toString().trim().isEmpty,
+            orElse: () => null,
+          );
+
+          if (activeVisit != null) {
+            // Found an active session (e.g., ID 5143)
             _hasActiveVisitSession = true;
-            _activeSiteName = lastVisit['siteName'];
+            _activeSiteName = activeVisit['siteName'];
           } else {
+            // 2. All visits are closed -> retrieve the latest visit safely by ID
+            visits.sort((a, b) {
+              final int idA = a['id'] is int ? a['id'] : int.tryParse(a['id'].toString()) ?? 0;
+              final int idB = b['id'] is int ? b['id'] : int.tryParse(b['id'].toString()) ?? 0;
+              return idA.compareTo(idB);
+            });
+            
             _hasActiveVisitSession = false;
-            _activeSiteName = null;
+            _activeSiteName = visits.last['siteName'];
           }
         } else {
           _hasActiveVisitSession = false;
@@ -583,29 +657,46 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
                     Container(
                       width: double.infinity,
                       margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: Colors.red.shade700,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Row(
                         children: [
-                          Icon(
-                            Icons.wifi_off,
-                            color: Colors.white,
-                          ),
+                          Icon(Icons.wifi_off, color: Colors.white),
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'Offline mode\nInternet connection unavailable.',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                             ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_isPoorNetwork)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade800,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.signal_cellular_connected_no_internet_4_bar, color: Colors.white),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Unstable or Poor Network Connection.\nPlease retry or move to a stronger signal area.',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _checkConnectivityOnResume(),
+                            child: const Text('RETRY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),

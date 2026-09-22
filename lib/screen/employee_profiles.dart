@@ -61,9 +61,9 @@ class _EmployeeProfilesState extends State<EmployeeProfiles> {
         allowedExtensions: ['xlsx'],
       );
 
-      if (result == null) return;
+      if (result.isEmpty || result.first.path == null) return;
 
-      final file = File(result.files.single.path!);
+      final file = File(result.first.path!);
 
       final authProvider = Provider.of<AuthProvider>(
         context,

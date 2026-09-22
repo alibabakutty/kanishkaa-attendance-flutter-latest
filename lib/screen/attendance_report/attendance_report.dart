@@ -303,7 +303,7 @@ class _AttendanceReportState extends State<AttendanceReport> {
           if (mounted) {
             _showSnackBar('No records found for selected period', Colors.orange);
           }
-          return;
+          return; // The finally block will reset _isExporting to false
         }
 
         // 3. Format header title (e.g., "AUGUST - 2026-2027")
@@ -311,7 +311,7 @@ class _AttendanceReportState extends State<AttendanceReport> {
         final startYear = month >= 4 ? year : year - 1;
         final monthYearTitle = '$monthStr - $startYear-${startYear + 1}';
 
-        // 4. Generate Excel Report
+        // 4. Generate Excel Report (Works seamlessly with 9-column updated service)
         filePath = await MonthendCumulativeService.exportToExcel(
           cumulativeData,
           monthYearTitle: monthYearTitle,

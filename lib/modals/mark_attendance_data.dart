@@ -13,6 +13,8 @@ class MarkAttendanceData {
   final DateTime? officeTimeOut;
   final GeoPoint? officeTimeOutLocation;
   final String? totalAttendanceHours;
+  final String? regularHours;
+  final String? overtimeHours;
   
   // Multi-visit collection list
   final List<AttendanceVisitData> visits;
@@ -47,6 +49,8 @@ class MarkAttendanceData {
     required this.status,
     this.tallyAttendanceStatus,
     this.tallyPermissionStatus,
+    this.regularHours,
+    this.overtimeHours
   });
 
   factory MarkAttendanceData.fromJson(Map<String, dynamic> json) {
@@ -76,6 +80,8 @@ class MarkAttendanceData {
       officeTimeOutLocation: json['officeTimeOutLocation'] != null
           ? GeoPoint.fromJson(json['officeTimeOutLocation'])
           : null,
+      regularHours: json['regularHours'],
+      overtimeHours: json['overtimeHours'],
       totalAttendanceHours: json['totalAttendanceHours'],
       
       visits: parsedVisits, // Assign the child objects array

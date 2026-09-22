@@ -81,9 +81,9 @@ class _EmployeeShiftLapState extends State<EmployeeShiftLap> {
         allowedExtensions: ['xlsx'],
       );
 
-      if (result == null || result.files.single.path == null) return;
+      if (result == null || result.single.path == null) return;
 
-      final file = File(result.files.single.path!);
+      final file = File(result.single.path!);
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       if (authProvider.token == null) {
