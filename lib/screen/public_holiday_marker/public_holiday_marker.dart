@@ -1,4 +1,3 @@
-
 import 'package:attendance_app/modals/attendance_holiday.dart';
 import 'package:attendance_app/service/attendance_holiday/attendance_holiday_service.dart';
 import 'package:flutter/material.dart';
@@ -8,15 +7,11 @@ class PublicHolidayMarker extends StatefulWidget {
   const PublicHolidayMarker({super.key});
 
   @override
-  State<PublicHolidayMarker> createState() =>
-      _PublicHolidayMarkerState();
+  State<PublicHolidayMarker> createState() => _PublicHolidayMarkerState();
 }
 
 class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
-  // =========================================================
   // COLORS
-  // =========================================================
-
   static const Color backgroundColor = Color(0xFF273F4F);
   static const Color cardColor = Color(0xFF314B5C);
   static const Color textPrimary = Color(0xFFF1F2F6);
@@ -25,34 +20,22 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
   static const Color successColor = Color(0xFF38EF7D);
   static const Color dangerColor = Color(0xFFFF6B6B);
 
-  // =========================================================
   // SERVICE
-  // =========================================================
-
   late final AttendanceHolidayService _holidayService;
 
-  // =========================================================
   // STATE
-  // =========================================================
-
   bool _isLoading = false;
   bool _isSaving = false;
-  bool _isDeleting = false;
 
   List<AttendanceHoliday> _holidays = [];
 
   DateTime _selectedMonth = DateTime.now();
-
-  // =========================================================
   // LIFECYCLE
-  // =========================================================
-
   @override
   void initState() {
     super.initState();
 
-    final baseUrl =
-        dotenv.env['API_BASE_URL']?.trim() ?? '';
+    final baseUrl = dotenv.env['API_BASE_URL']?.trim() ?? '';
 
     _holidayService = AttendanceHolidayService(
       baseUrl: baseUrl,
@@ -61,10 +44,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     _loadHolidays();
   }
 
-  // =========================================================
   // LOAD HOLIDAYS
-  // =========================================================
-
   Future<void> _loadHolidays() async {
     if (!mounted) return;
 
@@ -73,8 +53,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     });
 
     try {
-      final holidays =
-          await _holidayService.getByMonth(
+      final holidays = await _holidayService.getByMonth(
         year: _selectedMonth.year,
         month: _selectedMonth.month,
       );
@@ -103,9 +82,54 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     }
   }
 
-  // =========================================================
+  bool _isLastDayOfMonth() {
+    final today = DateTime.now();
+    final lastDay = DateUtils.getDaysInMonth(today.year, today.month);
+
+    return today.day == lastDay;
+  }
+
+  void _handleAddHoliday() {
+    if (!_isLastDayOfMonth()) {
+      _showWarning(
+        'You can add holidays only on the last day of the month.',
+      );
+      return;
+    }
+    if (_isSaving) return;
+    _showAddHolidayDialog();
+  }
+
+  void _showWarning(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF8A5A00),
+          duration: const Duration(seconds: 3),
+          content: const Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.white,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'You can add holidays only on the last day of the month.',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
+
   // CREATE HOLIDAY
-  // =========================================================
   Future<bool> _createHoliday({
     required DateTime date,
     required HolidayType holidayType,
@@ -123,9 +147,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
         holidayDate: date,
         holidayType: holidayType,
         holidayName: holidayName.trim(),
-        description: description.trim().isEmpty
-            ? null
-            : description.trim(),
+        description: description.trim().isEmpty ? null : description.trim(),
       );
 
       debugPrint('========================================');
@@ -137,12 +159,8 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       debugPrint('JSON: ${request.toJson()}');
       debugPrint('========================================');
 
-      // =========================================================
       // 1. CREATE HOLIDAY
-      // =========================================================
-
-      final createdHoliday =
-          await _holidayService.create(request);
+      final createdHoliday = await _holidayService.create(request);
 
       debugPrint(
         'HOLIDAY CREATED SUCCESSFULLY: '
@@ -150,36 +168,17 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       );
 
       if (!mounted) return false;
-
-      // =========================================================
-      // 2. IMPORTANT:
-      //    POST WAS SUCCESSFUL.
-      //    DO NOT LET A REFRESH ERROR MAKE SAVE LOOK LIKE FAILURE.
-      // =========================================================
-
       _showSuccess(
         'Holiday created successfully.',
       );
-
       // Close dialog immediately because save succeeded.
       return true;
     } on AttendanceHolidayApiException catch (e) {
-      debugPrint(
-        '========================================',
-      );
-      debugPrint(
-        'HOLIDAY API ERROR',
-      );
-      debugPrint(
-        'Status: ${e.statusCode}',
-      );
-      debugPrint(
-        'Message: ${e.message}',
-      );
-      debugPrint(
-        '========================================',
-      );
-
+      debugPrint('========================================');
+      debugPrint('HOLIDAY API ERROR');
+      debugPrint('Status: ${e.statusCode}');
+      debugPrint('Message: ${e.message}');
+      debugPrint('========================================');
       if (!mounted) return false;
 
       _showError(
@@ -188,21 +187,11 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
 
       return false;
     } catch (e, stackTrace) {
-      debugPrint(
-        '========================================',
-      );
-      debugPrint(
-        'HOLIDAY SAVE ERROR',
-      );
-      debugPrint(
-        '$e',
-      );
-      debugPrint(
-        stackTrace.toString(),
-      );
-      debugPrint(
-        '========================================',
-      );
+      debugPrint('========================================');
+      debugPrint('HOLIDAY SAVE ERROR');
+      debugPrint('$e');
+      debugPrint(stackTrace.toString());
+      debugPrint('========================================');
 
       if (!mounted) return false;
 
@@ -220,18 +209,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     }
   }
 
-  // =========================================================
-  // DELETE HOLIDAY
-  // =========================================================
-
-  // =========================================================
-  // DELETE CONFIRMATION
-  // =========================================================
-
-  // =========================================================
   // ADD HOLIDAY DIALOG
-  // =========================================================
-
   Future<void> _showAddHolidayDialog() async {
     final daysInMonth = DateUtils.getDaysInMonth(
       _selectedMonth.year,
@@ -248,10 +226,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
 
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
-
-    HolidayType selectedType =
-        HolidayType.publicHoliday;
-
+    HolidayType selectedType = HolidayType.publicHoliday;
     final formKey = GlobalKey<FormState>();
 
     final created = await showDialog<bool>(
@@ -294,34 +269,23 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // =================================================
                         // DATE
-                        // =================================================
-
                         InkWell(
-                          borderRadius:
-                              BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(14),
                           onTap: () async {
-                            final picked =
-                                await showDatePicker(
+                            final picked = await showDatePicker(
                               context: context,
                               initialDate: selectedDate,
-                              firstDate:
-                                  DateTime(2000),
-                              lastDate:
-                                  DateTime(2100),
-                              builder:
-                                  (context, child) {
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                              builder: (context, child) {
                                 return Theme(
                                   data: Theme.of(
                                     context,
                                   ).copyWith(
-                                    colorScheme:
-                                        const ColorScheme.dark(
-                                      primary:
-                                          accentColor,
-                                      surface:
-                                          cardColor,
+                                    colorScheme: const ColorScheme.dark(
+                                      primary: accentColor,
+                                      surface: cardColor,
                                     ),
                                   ),
                                   child: child!,
@@ -337,12 +301,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                           },
                           child: Container(
                             width: double.infinity,
-                            padding:
-                                const EdgeInsets.all(15),
+                            padding: const EdgeInsets.all(15),
                             decoration: BoxDecoration(
                               color: backgroundColor,
-                              borderRadius:
-                                  BorderRadius.circular(
+                              borderRadius: BorderRadius.circular(
                                 14,
                               ),
                               border: Border.all(
@@ -361,15 +323,12 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment
-                                            .start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const Text(
                                         'Holiday Date',
-                                        style:
-                                            TextStyle(
-                                          color:
-                                              textSecondary,
+                                        style: TextStyle(
+                                          color: textSecondary,
                                           fontSize: 11,
                                         ),
                                       ),
@@ -380,14 +339,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                                         _displayDate(
                                           selectedDate,
                                         ),
-                                        style:
-                                            const TextStyle(
-                                          color:
-                                              textPrimary,
+                                        style: const TextStyle(
+                                          color: textPrimary,
                                           fontSize: 15,
-                                          fontWeight:
-                                              FontWeight
-                                                  .w600,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ],
@@ -403,13 +358,8 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                         ),
 
                         const SizedBox(height: 16),
-
-                        // =================================================
                         // HOLIDAY TYPE
-                        // =================================================
-
-                        DropdownButtonFormField<
-                            HolidayType>(
+                        DropdownButtonFormField<HolidayType>(
                           value: selectedType,
                           dropdownColor: cardColor,
                           style: const TextStyle(
@@ -421,9 +371,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                           ),
                           items: HolidayType.values
                               .map(
-                                (type) =>
-                                    DropdownMenuItem<
-                                        HolidayType>(
+                                (type) => DropdownMenuItem<HolidayType>(
                                   value: type,
                                   child: Text(
                                     type.displayName,
@@ -441,15 +389,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                         ),
 
                         const SizedBox(height: 16),
-
-                        // =================================================
                         // HOLIDAY NAME
-                        // =================================================
-
                         TextFormField(
                           controller: nameController,
-                          textCapitalization:
-                              TextCapitalization.words,
+                          textCapitalization: TextCapitalization.words,
                           style: const TextStyle(
                             color: textPrimary,
                           ),
@@ -459,40 +402,29 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                             icon: Icons.celebration,
                           ),
                           validator: (value) {
-                            if (value == null ||
-                                value.trim().isEmpty) {
+                            if (value == null || value.trim().isEmpty) {
                               return 'Holiday name is required';
                             }
 
-                            if (value.trim().length >
-                                255) {
+                            if (value.trim().length > 255) {
                               return 'Holiday name is too long';
                             }
-
                             return null;
                           },
                         ),
-
                         const SizedBox(height: 16),
-
-                        // =================================================
                         // DESCRIPTION
-                        // =================================================
-
                         TextFormField(
-                          controller:
-                              descriptionController,
+                          controller: descriptionController,
                           maxLines: 3,
                           maxLength: 500,
-                          textCapitalization:
-                              TextCapitalization.sentences,
+                          textCapitalization: TextCapitalization.sentences,
                           style: const TextStyle(
                             color: textPrimary,
                           ),
                           decoration: _inputDecoration(
                             label: 'Description',
-                            hint:
-                                'Optional description',
+                            hint: 'Optional description',
                             icon: Icons.description,
                           ),
                         ),
@@ -522,32 +454,26 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: accentColor,
                     foregroundColor: backgroundColor,
-                    padding:
-                        const EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 12,
                     ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   icon: _isSaving
                       ? const SizedBox(
                           width: 17,
                           height: 17,
-                          child:
-                              CircularProgressIndicator(
+                          child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: backgroundColor,
                           ),
                         )
                       : const Icon(Icons.save),
                   label: Text(
-                    _isSaving
-                        ? 'SAVING...'
-                        : 'SAVE',
+                    _isSaving ? 'SAVING...' : 'SAVE',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                     ),
@@ -555,13 +481,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                   onPressed: _isSaving
                       ? null
                       : () async {
-                          if (!formKey
-                              .currentState!
-                              .validate()) {
+                          if (!formKey.currentState!.validate()) {
                             return;
                           }
 
-                          
                           final success = await _createHoliday(
                             date: selectedDate,
                             holidayType: selectedType,
@@ -569,9 +492,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                             description: descriptionController.text.trim(),
                           );
 
-                          if (success &&
-                              dialogContext
-                                  .mounted) {
+                          if (success && dialogContext.mounted) {
                             Navigator.pop(
                               dialogContext,
                               true,
@@ -594,10 +515,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     }
   }
 
-  // =========================================================
   // MONTH PICKER
-  // =========================================================
-
   Future<void> _selectMonth() async {
     final picked = await showDialog<DateTime>(
       context: context,
@@ -627,8 +545,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
                           onPressed: () {
@@ -673,21 +590,13 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                         crossAxisSpacing: 8,
                         childAspectRatio: 1.7,
                       ),
-                      itemBuilder:
-                          (context, index) {
+                      itemBuilder: (context, index) {
                         final month = index + 1;
-
-                        final selected =
-                            month ==
-                                    _selectedMonth
-                                        .month &&
-                                year ==
-                                    _selectedMonth
-                                        .year;
+                        final selected = month == _selectedMonth.month &&
+                            year == _selectedMonth.year;
 
                         return InkWell(
-                          borderRadius:
-                              BorderRadius.circular(
+                          borderRadius: BorderRadius.circular(
                             10,
                           ),
                           onTap: () {
@@ -697,15 +606,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                             );
                           },
                           child: Container(
-                            alignment:
-                                Alignment.center,
-                            decoration:
-                                BoxDecoration(
-                              color: selected
-                                  ? accentColor
-                                  : backgroundColor,
-                              borderRadius:
-                                  BorderRadius.circular(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: selected ? accentColor : backgroundColor,
+                              borderRadius: BorderRadius.circular(
                                 10,
                               ),
                             ),
@@ -714,9 +618,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                                 month,
                               ),
                               style: TextStyle(
-                                color: selected
-                                    ? backgroundColor
-                                    : textPrimary,
+                                color: selected ? backgroundColor : textPrimary,
                                 fontWeight: selected
                                     ? FontWeight.bold
                                     : FontWeight.normal,
@@ -743,11 +645,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       await _loadHolidays();
     }
   }
-
-  // =========================================================
   // BUILD
-  // =========================================================
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -760,8 +658,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
             Icons.arrow_back,
             color: accentColor,
           ),
-          onPressed: () =>
-              Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Public Holidays',
@@ -774,8 +671,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed:
-                _isLoading ? null : _loadHolidays,
+            onPressed: _isLoading ? null : _loadHolidays,
             icon: const Icon(
               Icons.refresh,
               color: accentColor,
@@ -790,8 +686,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
             Expanded(
               child: _isLoading
                   ? const Center(
-                      child:
-                          CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         color: accentColor,
                       ),
                     )
@@ -807,13 +702,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
           ],
         ),
       ),
-      floatingActionButton:
-          FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton.extended(
         backgroundColor: accentColor,
         foregroundColor: backgroundColor,
-        onPressed: _isSaving
-            ? null
-            : _showAddHolidayDialog,
+        onPressed: _handleAddHoliday,
         icon: const Icon(Icons.add),
         label: const Text(
           'Add Holiday',
@@ -824,11 +716,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       ),
     );
   }
-
-  // =========================================================
   // MONTH HEADER
-  // =========================================================
-
   Widget _buildMonthHeader() {
     return Container(
       margin: const EdgeInsets.fromLTRB(
@@ -873,8 +761,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Holiday Calendar',
@@ -897,20 +784,16 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
             ),
           ),
           InkWell(
-            borderRadius:
-                BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(12),
             onTap: _selectMonth,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(
+              padding: const EdgeInsets.symmetric(
                 horizontal: 13,
                 vertical: 10,
               ),
               decoration: BoxDecoration(
-                color:
-                    Colors.white.withOpacity(0.18),
-                borderRadius:
-                    BorderRadius.circular(12),
+                color: Colors.white.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: const Row(
                 children: [
@@ -924,8 +807,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                     'Month',
                     style: TextStyle(
                       color: Colors.white,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -936,15 +818,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       ),
     );
   }
-
-  // =========================================================
   // HOLIDAY LIST
-  // =========================================================
-
   Widget _buildHolidayList() {
     return ListView.builder(
-      physics:
-          const AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         16,
         8,
@@ -959,165 +836,117 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       },
     );
   }
-
-  // =========================================================
   // HOLIDAY CARD
-  // =========================================================
-
   Widget _buildHolidayCard(
     AttendanceHoliday holiday,
   ) {
     final isActive = holiday.active;
 
     return Container(
-      margin:
-          const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isActive
-              ? Colors.white12
-              : Colors.redAccent
-                  .withOpacity(0.25),
+          color: isActive ? Colors.white12 : Colors.redAccent.withOpacity(0.25),
         ),
         boxShadow: const [
           BoxShadow(
             color: Colors.black26,
-            blurRadius: 8,
-            offset: Offset(0, 4),
+            blurRadius: 4,
+            offset: Offset(0, 2),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(15),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // =================================================
-            // DATE
-            // =================================================
-
+            // DATE BOX
             Container(
-              width: 62,
-              height: 70,
+              width: 48,
+              height: 48, // Reduced height for ultra-thin layout
               decoration: BoxDecoration(
                 color: isActive
-                    ? accentColor
-                        .withOpacity(0.12)
-                    : Colors.redAccent
-                        .withOpacity(0.10),
-                borderRadius:
-                    BorderRadius.circular(14),
+                    ? accentColor.withOpacity(0.12)
+                    : Colors.redAccent.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: isActive
-                      ? accentColor
-                          .withOpacity(0.25)
-                      : Colors.redAccent
-                          .withOpacity(0.25),
+                      ? accentColor.withOpacity(0.25)
+                      : Colors.redAccent.withOpacity(0.25),
                 ),
               ),
               child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     '${holiday.holidayDate.day}',
                     style: TextStyle(
-                      color: isActive
-                          ? accentColor
-                          : Colors.redAccent,
-                      fontSize: 24,
-                      fontWeight:
-                          FontWeight.bold,
+                      color: isActive ? accentColor : Colors.redAccent,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      height: 1.0,
                     ),
                   ),
+                  const SizedBox(height: 1),
                   Text(
                     _monthShortName(
                       holiday.holidayDate.month,
                     ),
                     style: TextStyle(
-                      color: isActive
-                          ? textSecondary
-                          : Colors.redAccent,
-                      fontSize: 11,
-                      fontWeight:
-                          FontWeight.w600,
+                      color: isActive ? textSecondary : Colors.redAccent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
                     ),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(width: 14),
-
-            // =================================================
+            const SizedBox(width: 12),
             // DETAILS
-            // =================================================
-
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    holiday.holidayName,
-                    maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: textPrimary,
-                      fontSize: 16,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 5,
+                  // TITLE & BADGES IN SINGLE LINE ROW
+                  Row(
                     children: [
-                      _buildTypeBadge(
-                        holiday.holidayType,
+                      Expanded(
+                        child: Text(
+                          holiday.holidayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                      _buildStatusBadge(
-                        isActive,
-                      ),
+                      const SizedBox(width: 6),
+                      _buildTypeBadge(holiday.holidayType),
+                      const SizedBox(width: 4),
+                      _buildStatusBadge(isActive),
                     ],
                   ),
                   if (holiday.description != null &&
-                      holiday.description!
-                          .trim()
-                          .isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                      holiday.description!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 3),
                     Text(
                       holiday.description!,
-                      maxLines: 2,
-                      overflow:
-                          TextOverflow.ellipsis,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: textSecondary,
-                        fontSize: 12,
+                        fontSize: 11,
                       ),
                     ),
                   ],
                 ],
-              ),
-            ),
-
-            // =================================================
-            // DELETE
-            // =================================================
-
-            IconButton(
-              tooltip: 'Remove Holiday',
-              onPressed:(){},
-              icon: Icon(
-                Icons.delete_outline,
-                color: _isDeleting
-                    ? Colors.white24
-                    : Colors.redAccent
-                        .withOpacity(0.85),
               ),
             ),
           ],
@@ -1126,132 +955,94 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     );
   }
 
-  // =========================================================
   // TYPE BADGE
-  // =========================================================
-
   Widget _buildTypeBadge(
     HolidayType type,
   ) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 5,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: 2,
       ),
       decoration: BoxDecoration(
-        color:
-            Colors.white.withOpacity(0.07),
-        borderRadius:
-            BorderRadius.circular(20),
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         type.displayName,
         style: const TextStyle(
           color: textSecondary,
-          fontSize: 10,
-          fontWeight:
-              FontWeight.w600,
+          fontSize: 9,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 
-  // =========================================================
   // STATUS BADGE
-  // =========================================================
-
   Widget _buildStatusBadge(
     bool active,
   ) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 5,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: 2,
       ),
       decoration: BoxDecoration(
         color: active
             ? successColor.withOpacity(0.12)
             : dangerColor.withOpacity(0.12),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
-        mainAxisSize:
-            MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 6,
-            height: 6,
-            decoration:
-                BoxDecoration(
-              color: active
-                  ? successColor
-                  : dangerColor,
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: active ? successColor : dangerColor,
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 3),
           Text(
-            active
-                ? 'ACTIVE'
-                : 'INACTIVE',
+            active ? 'ACTIVE' : 'INACTIVE',
             style: TextStyle(
-              color: active
-                  ? successColor
-                  : dangerColor,
-              fontSize: 9,
-              fontWeight:
-                  FontWeight.bold,
+              color: active ? successColor : dangerColor,
+              fontSize: 8,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
       ),
     );
   }
-
-  // =========================================================
   // EMPTY STATE
-  // =========================================================
-
   Widget _buildEmptyState() {
     return ListView(
-      physics:
-          const AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
         SizedBox(
-          height:
-              MediaQuery.of(context)
-                  .size
-                  .height *
-              0.45,
+          height: MediaQuery.of(context).size.height * 0.45,
           child: Center(
             child: Padding(
-              padding:
-                  const EdgeInsets.all(30),
+              padding: const EdgeInsets.all(30),
               child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.all(
+                    padding: const EdgeInsets.all(
                       22,
                     ),
-                    decoration:
-                        BoxDecoration(
-                      color: accentColor
-                          .withOpacity(0.08),
-                      shape:
-                          BoxShape.circle,
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.08),
+                      shape: BoxShape.circle,
                     ),
-                    child:
-                        const Icon(
+                    child: const Icon(
                       Icons.event_busy,
                       size: 55,
-                      color:
-                          accentColor,
+                      color: accentColor,
                     ),
                   ),
                   const SizedBox(
@@ -1259,13 +1050,10 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                   ),
                   const Text(
                     'No Holidays',
-                    style:
-                        TextStyle(
-                      color:
-                          textPrimary,
+                    style: TextStyle(
+                      color: textPrimary,
                       fontSize: 20,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(
@@ -1275,48 +1063,32 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
                     'No holidays have been marked for '
                     '${_monthName(_selectedMonth.month)} '
                     '${_selectedMonth.year}.',
-                    textAlign:
-                        TextAlign.center,
-                    style:
-                        const TextStyle(
-                      color:
-                          textSecondary,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: textSecondary,
                       fontSize: 13,
                     ),
                   ),
                   const SizedBox(
                     height: 20,
                   ),
-                  ElevatedButton
-                      .icon(
-                    style:
-                        ElevatedButton
-                            .styleFrom(
-                      backgroundColor:
-                          accentColor,
-                      foregroundColor:
-                          backgroundColor,
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accentColor,
+                      foregroundColor: backgroundColor,
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 12,
                       ),
                     ),
-                    onPressed:
-                        _showAddHolidayDialog,
-                    icon:
-                        const Icon(
+                    onPressed: _handleAddHoliday,
+                    icon: const Icon(
                       Icons.add,
                     ),
-                    label:
-                        const Text(
+                    label: const Text(
                       'Add Holiday',
-                      style:
-                          TextStyle(
-                        fontWeight:
-                            FontWeight
-                                .bold,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
@@ -1328,11 +1100,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       ],
     );
   }
-
-  // =========================================================
   // INPUT DECORATION
-  // =========================================================
-
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
@@ -1341,84 +1109,61 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      labelStyle:
-          const TextStyle(
+      labelStyle: const TextStyle(
         color: textSecondary,
       ),
-      hintStyle:
-          const TextStyle(
+      hintStyle: const TextStyle(
         color: Colors.white30,
       ),
-      prefixIcon:
-          Icon(
+      prefixIcon: Icon(
         icon,
         color: accentColor,
       ),
       filled: true,
-      fillColor:
-          backgroundColor,
-      border:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      fillColor: backgroundColor,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            BorderSide.none,
+        borderSide: BorderSide.none,
       ),
-      enabledBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
+        borderSide: const BorderSide(
           color: Colors.white12,
         ),
       ),
-      focusedBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
+        borderSide: const BorderSide(
           color: accentColor,
           width: 1.2,
         ),
       ),
-      errorBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
+        borderSide: const BorderSide(
           color: dangerColor,
         ),
       ),
-      focusedErrorBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
+        borderSide: const BorderSide(
           color: dangerColor,
           width: 1.2,
         ),
       ),
     );
   }
-
-  // =========================================================
   // DATE HELPERS
-  // =========================================================
-
   String _displayDate(
     DateTime date,
   ) {
@@ -1468,11 +1213,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
 
     return months[month - 1];
   }
-
-  // =========================================================
   // SUCCESS SNACKBAR
-  // =========================================================
-
   void _showSuccess(
     String message,
   ) {
@@ -1482,10 +1223,8 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor:
-              const Color(0xFF1E5C45),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF1E5C45),
           content: Row(
             children: [
               const Icon(
@@ -1498,10 +1237,8 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
               Expanded(
                 child: Text(
                   message,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white,
+                  style: const TextStyle(
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -1510,11 +1247,7 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
         ),
       );
   }
-
-  // =========================================================
   // ERROR SNACKBAR
-  // =========================================================
-
   void _showError(
     String message,
   ) {
@@ -1524,20 +1257,16 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor:
-              const Color(0xFF632F35),
-          duration:
-              const Duration(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF632F35),
+          duration: const Duration(
             seconds: 4,
           ),
           content: Row(
             children: [
               const Icon(
                 Icons.error_outline,
-                color:
-                    Colors.redAccent,
+                color: Colors.redAccent,
               ),
               const SizedBox(
                 width: 10,
@@ -1545,10 +1274,8 @@ class _PublicHolidayMarkerState extends State<PublicHolidayMarker> {
               Expanded(
                 child: Text(
                   message,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white,
+                  style: const TextStyle(
+                    color: Colors.white,
                   ),
                 ),
               ),
