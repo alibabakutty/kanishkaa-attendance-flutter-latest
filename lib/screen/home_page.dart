@@ -1,6 +1,5 @@
 import 'package:attendance_app/authentication/auth_provider.dart';
-import 'package:attendance_app/screen/admin_approval/admin_approval_page.dart';
-import 'package:attendance_app/screen/attendance_report/attendance_report.dart';
+import 'package:attendance_app/screen/admin_management_submenu/admin_management_submenu.dart';
 import 'package:attendance_app/screen/employee_profiles.dart';
 import 'package:attendance_app/screen/mark_attendance/mark_attendance.dart';
 import 'package:flutter/material.dart';
@@ -223,15 +222,43 @@ class _HomePageState extends State<HomePage> {
                       onTap: () => _navigateTo(const MarkAttendance()),
                     ),
                     _buildDashboardCard(
-                      icon: Icons.history,
-                      title: 'Attendance History',
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFF6FD8), Color(0xFFFF9A8B)],
-                        begin: Alignment.topRight,
-                        end: Alignment.bottomLeft,
-                      ),
-                      onTap: () => _navigateTo(const AttendanceReport()),
+                      icon: Icons.access_time_filled,
+                      title: 'Sunday Attendance',
+                      gradient: DateTime.now().weekday == DateTime.sunday
+                          ? const LinearGradient(
+                              colors: [Color(0xFFFF6FD8), Color(0xFFFF9A8B)],
+                              begin: Alignment.topRight,
+                              end: Alignment.bottomLeft,
+                            )
+                          : const LinearGradient(
+                              colors: [Colors.grey, Colors.blueGrey], // Dimmed gradient when disabled
+                              begin: Alignment.topRight,
+                              end: Alignment.bottomLeft,
+                            ),
+                      onTap: () {
+                        if (DateTime.now().weekday != DateTime.sunday) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sunday Attendance is only available on Sundays'),
+                              backgroundColor: Colors.red,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        } else {
+                          _navigateTo(const MarkAttendance(isSunday: true));
+                        }
+                      },
                     ),
+                    // _buildDashboardCard(
+                    //   icon: Icons.history,
+                    //   title: 'Attendance History',
+                    //   gradient: const LinearGradient(
+                    //     colors: [Color(0xFFFF6FD8), Color(0xFFFF9A8B)],
+                    //     begin: Alignment.topRight,
+                    //     end: Alignment.bottomLeft,
+                    //   ),
+                    //   onTap: () => _navigateTo(const AttendanceReport()),
+                    // ),
                     _buildDashboardCard(
                       icon: Icons.schedule,
                       title: "Permission Hours",
@@ -275,7 +302,7 @@ class _HomePageState extends State<HomePage> {
                         begin: Alignment.topRight,
                         end: Alignment.bottomLeft,
                       ),
-                      onTap: () => _navigateTo(const AdminApprovalPage()),
+                      onTap: () => _navigateTo(const AdminManagementSubmenu()),
                       adminOnly: true,
                     )
                   ],

@@ -13,7 +13,8 @@ import 'package:attendance_app/modals/geopoint.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class MarkAttendance extends StatefulWidget {
-  const MarkAttendance({super.key});
+  final bool isSunday;
+  const MarkAttendance({super.key, this.isSunday = false});
 
   @override
   State<MarkAttendance> createState() => _MarkAttendanceState();
@@ -331,17 +332,43 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
 
       setState(() {
         _isAwaitingApproval = data['status'] == 'PENDING_APPROVAL';
-        _officeTimeIn = data['officeTimeIn'] != null
-            ? DateTime.parse('$todayStr ${data['officeTimeIn']}')
-            : null;
-        _officeTimeOut = data['officeTimeOut'] != null
-            ? DateTime.parse('$todayStr ${data['officeTimeOut']}')
-            : null;
+        
+        // Parse office time in (handles both full timestamp strings and time-only strings)
+        if (data['officeTimeIn'] != null) {
+          String inStr = data['officeTimeIn'].toString();
+          _officeTimeIn = inStr.contains('T') 
+              ? DateTime.parse(inStr) 
+              : DateTime.parse('$todayStr $inStr');
+        } else {
+          _officeTimeIn = null;
+        }
+
+        // Parse office time out
+        if (data['officeTimeOut'] != null) {
+          String outStr = data['officeTimeOut'].toString();
+          _officeTimeOut = outStr.contains('T') 
+              ? DateTime.parse(outStr) 
+              : DateTime.parse('$todayStr $outStr');
+        } else {
+          _officeTimeOut = null;
+        }
+
         _isSubmitted = _officeTimeOut != null;
 
-        if (!_isAwaitingApproval && data['visits'] != null && (data['visits'] as List).isNotEmpty) {
-          final List<dynamic> visits = data['visits'];
+        // Extract visits safely from shiftSessions if root 'visits' is missing/null
+        List<dynamic> visits = [];
+        if (data['visits'] != null && (data['visits'] as List).isNotEmpty) {
+          visits = data['visits'];
+        } else if (data['shiftSessions'] != null && (data['shiftSessions'] as List).isNotEmpty) {
+          // Gather visits from all shift sessions
+          for (var session in data['shiftSessions']) {
+            if (session['visits'] != null && (session['visits'] as List).isNotEmpty) {
+              visits.addAll(session['visits']);
+            }
+          }
+        }
 
+        if (!_isAwaitingApproval && visits.isNotEmpty) {
           // 1. Check if ANY visit is currently open (timeOut is null or empty)
           final activeVisit = visits.firstWhere(
             (v) => v['timeOut'] == null || v['timeOut'].toString().trim().isEmpty,
@@ -349,19 +376,12 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
           );
 
           if (activeVisit != null) {
-            // Found an active session (e.g., ID 5143)
             _hasActiveVisitSession = true;
             _activeSiteName = activeVisit['siteName'];
           } else {
-            // 2. All visits are closed -> retrieve the latest visit safely by ID
-            visits.sort((a, b) {
-              final int idA = a['id'] is int ? a['id'] : int.tryParse(a['id'].toString()) ?? 0;
-              final int idB = b['id'] is int ? b['id'] : int.tryParse(b['id'].toString()) ?? 0;
-              return idA.compareTo(idB);
-            });
-            
+            // 2. All visits are closed -> Clear active session so Finish Workday appears
             _hasActiveVisitSession = false;
-            _activeSiteName = visits.last['siteName'];
+            _activeSiteName = null; 
           }
         } else {
           _hasActiveVisitSession = false;
@@ -400,123 +420,239 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
   // --- ATTENDANCE ACTION ---
   Future<void> _executeAttendanceAction(String actionType) async {
     if (_isProcessing || _isOptimisticUpdating) return;
+    // Capture the mobile's local time when the action starts.
+    final DateTime actionTapTime = DateTime.now();
 
+    if (!['sitein', 'siteout', 'dayout'].contains(actionType)) {
+      _showErrorSnackBar('Invalid attendance action.');
+      return;
+    }
     if (_isOffline) {
       _showErrorSnackBar(
         'No internet connection. Please reconnect before marking attendance.',
       );
       return;
     }
+    final authProvider = Provider.of<AuthProvider>(context, listen: false,);
 
-    final String siteLabel = actionType == 'sitein'
-        ? (_isCustomSite ? _remarksController.text.trim() : (_selectedSiteObject?['siteName'] ?? ""))
-        : (_activeSiteName ?? "Default Site");
+    final String employeeId = authProvider.employeeId?.toString().trim() ?? '';
+    final String employeeName = authProvider.username?.trim() ?? '';
+    final String mobileNumber = authProvider.mobileNumber?.toString().trim() ?? '';
+    // Validate employee identity before making the request.
+    // if (employeeId.isEmpty) {
+    //   _showErrorSnackBar(
+    //     'Employee ID is missing. Please log in again or refresh your profile.',
+    //   );
+    //   return;
+    // }
 
-    final String? chosenSiteId = actionType == 'sitein' && !_isCustomSite
-        ? _selectedSiteObject != null ? _selectedSiteObject!['siteId'] : null
-        : null;
+    if (employeeName.isEmpty) {
+      _showErrorSnackBar(
+        'Employee name is missing. Please log in again.',
+      );
+      return;
+    }
 
-    // Validation
+    // Validate the requested action.
     if (actionType == 'sitein') {
-      if (!_isCustomSite && _selectedSiteObject == null) {
+      if (_hasActiveVisitSession) {
+        _showErrorSnackBar(
+          'Please check out from "$_activeSiteName" before checking in again.',
+        );
+        return;
+      }
+
+      if (_isCustomSite) {
+        if (_remarksController.text.trim().isEmpty) {
+          _showErrorSnackBar(
+            'Please enter remarks for the custom site.',
+          );
+          return;
+        }
+      } else if (_selectedSiteObject == null) {
         _showErrorSnackBar('Please select an official site.');
         return;
       }
-      if (_isCustomSite && _remarksController.text.trim().isEmpty) {
-        _showErrorSnackBar('Please enter remarks for custom work.');
-        return;
-      }
-      if (_hasActiveVisitSession) {
-        _showErrorSnackBar('Cannot Check-In: You must first Check-Out of your active session at "$_activeSiteName".');
-        return;
-      }
-      if (_activeSiteName?.trim().toLowerCase() == siteLabel.trim().toLowerCase()) {
-        _showErrorSnackBar('Duplicate Guard: You are already checked in at "$siteLabel" today.');
-        return;
-      }
+    }
+
+    if (actionType == 'siteout' && !_hasActiveVisitSession) {
+      _showErrorSnackBar('There is no active site visit to check out.');
+      return;
     }
 
     if (actionType == 'dayout' && _hasActiveVisitSession) {
-      _showErrorSnackBar('Please Check-Out of your current site session before finishing your workday.');
+      _showErrorSnackBar(
+        'Please check out from your active site before finishing your workday.',
+      );
       return;
     }
 
-    final GeoPoint? currentGpsLocation = await _locationService.determinePosition();
-    if (currentGpsLocation == null) {
-      _showErrorSnackBar('Unable to capture GPS coordinates. Stand under open sky and retry.');
-      return;
-    }
-
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    final bool runningAsCustomSite = _hasActiveVisitSession
-        ? (_activeSiteName != null && !_siteNamesContainsActiveVisit())
-        : _isCustomSite;
-
-    final bool previousHasActiveVisitSession = _hasActiveVisitSession;
-    final String? previousActiveSiteName = _activeSiteName;
-    final String previousRemarksText = _remarksController.text;
-    final dynamic previousSelectedSiteObject = _selectedSiteObject;
-    final bool previousIsCustomSite = _isCustomSite;
-    final bool previousIsAwaitingApproval = _isAwaitingApproval;
-
-    // Optimistic update
-    setState(() {
-      _isOptimisticUpdating = true;
-      _networkRetryCount = 0;
-
-      if (actionType == "sitein") {
-        // Remove the check for MarkAttendanceHelper.isPastGracePeriod() here.
-        // Let the backend decide if it's approved or pending.
-        _hasActiveVisitSession = true;
-        _activeSiteName = siteLabel;
-      } else if (actionType == "siteout") {
-        _hasActiveVisitSession = false;
-        _activeSiteName = null;
-      } else if (actionType == "dayout") {
-        _isSubmitted = true;
-        _hasActiveVisitSession = false;
-        _activeSiteName = null;
-      }
-
-      _remarksController.clear();
-      _selectedSiteObject = null;
-      _isCustomSite = false;
-    });
-
-    // Prepare payload
-    final Map<String, dynamic> bodyPayload = {
-      "employeeId": authProvider.employeeId,
-      "employeeName": authProvider.username,
-      "mobileNumber": authProvider.mobileNumber,
-      "status": actionType,
-      "tallyAttendanceStatus": "PENDING",
-      "visits": [
-        {
-          "siteId": chosenSiteId,
-          "siteName": siteLabel,
-          "visitType": runningAsCustomSite ? "OTHER" : "REGULAR_SITE",
-          "isCustomSite": runningAsCustomSite,
-          "remarks": (actionType == "sitein" && runningAsCustomSite) ? previousRemarksText.trim() : null,
-          "timeInLocation": actionType == "sitein" ? currentGpsLocation.toJson() : null,
-          "timeOutLocation": (actionType == "siteout" || actionType == "dayout") ? currentGpsLocation.toJson() : null,
-        }
-      ]
+    // Save the current UI state for rollback if the API request fails.
+    final Map<String, dynamic> rollbackData = {
+      'hasActiveVisitSession': _hasActiveVisitSession,
+      'activeSiteName': _activeSiteName,
+      'remarksText': _remarksController.text,
+      'selectedSiteObject': _selectedSiteObject,
+      'isCustomSite': _isCustomSite,
+      'isAwaitingApproval': _isAwaitingApproval,
+      'isSubmitted': _isSubmitted,
     };
 
-    await _sendAttendanceNetworkPayload(
-      payload: bodyPayload,
-      actionType: actionType,
-      rollbackData: {
-        'hasActiveVisitSession': previousHasActiveVisitSession,
-        'activeSiteName': previousActiveSiteName,
-        'remarksText': previousRemarksText,
-        'selectedSiteObject': previousSelectedSiteObject,
-        'isCustomSite': previousIsCustomSite,
-        'isAwaitingApproval': previousIsAwaitingApproval,
-        'isSubmitted': _isSubmitted && actionType != 'dayout',
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      // Capture the current location.
+      final GeoPoint? currentGpsLocation =
+          await _locationService.determinePosition();
+
+      if (!mounted) return;
+
+      if (currentGpsLocation == null) {
+        _showErrorSnackBar(
+          'Unable to capture GPS coordinates. Please retry.',
+        );
+        return;
       }
-    );
+
+      // final DateTime now = DateTime.now();
+      final String attendanceDate = DateFormat('yyyy-MM-dd').format(actionTapTime);
+      final String currentTime = DateFormat('HH:mm:ss').format(actionTapTime);
+      // Select shift using the mobile's local system time.
+      // 21:00:00 and later means NIGHT_SHIFT.
+      final String shiftType = actionTapTime.hour >= 21 ? 'NIGHT_SHIFT' : 'DAY_SHIFT';
+      debugPrint('Mobile action time: $actionTapTime');
+      debugPrint('Selected shift type: $shiftType');
+
+      final bool runningAsCustomSite = actionType == 'sitein'
+          ? _isCustomSite
+          : (_activeSiteName != null &&
+              !_siteNamesContainsActiveVisit());
+
+      final String siteLabel = actionType == 'sitein'
+          ? (runningAsCustomSite
+              ? _remarksController.text.trim()
+              : (_selectedSiteObject?['siteName']?.toString().trim() ?? ''))
+          : (_activeSiteName?.trim() ?? '');
+
+      // Declare chosenSiteId before using it in visitPayload.
+      final dynamic chosenSiteId =
+          actionType == 'sitein' && !runningAsCustomSite
+              ? _selectedSiteObject != null ? _selectedSiteObject!['siteId'] : null
+              : null;
+
+      if (actionType != 'dayout' && siteLabel.isEmpty) {
+        _showErrorSnackBar(
+          'Site name is missing. Please refresh attendance and retry.',
+        );
+        return;
+      }
+
+      // Construct the visit record.
+      final Map<String, dynamic> visitPayload = {
+        'siteId': chosenSiteId,
+        'siteName': siteLabel,
+        'visitType': runningAsCustomSite ? 'OTHER' : 'REGULAR_SITE',
+        'customSite': runningAsCustomSite,
+        'remarks': runningAsCustomSite
+            ? _remarksController.text.trim()
+            : null,
+        'timeIn': actionType == 'sitein' ? currentTime : null,
+        'timeInLocation': actionType == 'sitein'
+            ? currentGpsLocation.toJson()
+            : null,
+        'timeOut': actionType == 'siteout' ? currentTime : null,
+        'timeOutLocation': actionType == 'siteout'
+            ? currentGpsLocation.toJson()
+            : null,
+      };
+      // A shift session is required by the backend.
+      // NOTE:
+      // GENERAL and IN_PROGRESS must match your backend's actual enum values.
+      // If your backend requires shiftMaster, its real ID must be supplied too.
+      final Map<String, dynamic> sessionPayload = {
+        'shiftType': shiftType,
+        'workDate': attendanceDate,
+        'timeIn': actionType == 'sitein' ? currentTime : null,
+        'timeInLocation': actionType == 'sitein'
+            ? currentGpsLocation.toJson()
+            : null,
+        'timeOut': actionType == 'dayout' ? currentTime : null,
+        'timeOutLocation': actionType == 'dayout'
+            ? currentGpsLocation.toJson()
+            : null,
+        'sessionStatus': actionType == 'dayout'
+            ? 'COMPLETED'
+            : 'IN_PROGRESS',
+        'remarks': runningAsCustomSite
+            ? _remarksController.text.trim()
+            : null,
+        'visits': actionType == 'dayout' ? [] : [visitPayload],
+      };
+
+      final Map<String, dynamic> bodyPayload = {
+        'employeeId': employeeId,
+        'employeeName': employeeName,
+        'mobileNumber': mobileNumber.isEmpty ? null : mobileNumber,
+        'attendanceDate': attendanceDate,
+        'status': actionType,
+        'tallyAttendanceStatus': 'PENDING',
+        'officeTimeOut': actionType == 'dayout' ? currentTime : null,
+        'officeTimeOutLocation': actionType == 'dayout' ? currentGpsLocation.toJson() : null,
+        'shiftSessions': [sessionPayload],
+      };
+
+      debugPrint('========== MARK ATTENDANCE REQUEST ==========');
+      debugPrint('Action: $actionType');
+      debugPrint('Employee ID: $employeeId');
+      debugPrint('Payload: $bodyPayload');
+      debugPrint('=============================================');
+
+      // Apply optimistic UI changes.
+      setState(() {
+        _isOptimisticUpdating = true;
+        _networkRetryCount = 0;
+
+        if (actionType == 'sitein') {
+          _hasActiveVisitSession = true;
+          _activeSiteName = siteLabel;
+        } else if (actionType == 'siteout') {
+          _hasActiveVisitSession = false;
+          _activeSiteName = null;
+        } else if (actionType == 'dayout') {
+          _isSubmitted = true;
+          _hasActiveVisitSession = false;
+          _activeSiteName = null;
+        }
+
+        _remarksController.clear();
+        _selectedSiteObject = null;
+        _isCustomSite = false;
+      });
+
+      await _sendAttendanceNetworkPayload(
+        payload: bodyPayload,
+        actionType: actionType,
+        rollbackData: rollbackData,
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Attendance action error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (!mounted) return;
+
+      _performRollback(
+        rollbackData,
+        'Unable to mark attendance: $e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
   }
 
   Future<void> _sendAttendanceNetworkPayload({
@@ -625,13 +761,14 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
     final statusColor = MarkAttendanceHelper.getStatusColor(status);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFf4f7f9),
+      backgroundColor: const Color(0xFFF4F7F9),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.blue[800],
         centerTitle: true,
-        title: const Text(
-          'Kanishkaa Attendance',
+        title: Text(
+          widget.isSunday ? 'Sunday Attendance' :
+          'Week Day Attendance',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -643,127 +780,171 @@ class _MarkAttendanceState extends State<MarkAttendance> with WidgetsBindingObse
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async {
-                _lastFetchTime = null;
-                await _loadScreenData();
-              },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    if (_isOffline)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade700,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.wifi_off, color: Colors.white),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Offline mode\nInternet connection unavailable.',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (_isPoorNetwork)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade800,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.signal_cellular_connected_no_internet_4_bar, color: Colors.white),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'Unstable or Poor Network Connection.\nPlease retry or move to a stronger signal area.',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _checkConnectivityOnResume(),
-                            child: const Text('RETRY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  // --- Professional Outer Container Border & Framing ---
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16.0),
+                    border: Border.all(
+                      color: Colors.blueGrey.shade300,
+                      width: 1.5,
                     ),
-                    ProfileHeaderWidget(
-                      authProvider: authProvider,
-                      status: status,
-                      statusColor: statusColor,
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    HeaderDashboardWidget(
-                      authProvider: authProvider,
-                      width: screenWidth,
-                      isAwaitingApproval: _isAwaitingApproval,
-                    ),
-                    const SizedBox(height: 20),
-
-                    if (_isAwaitingApproval) const ApprovalWarningWidget(),
-
-                    ActionCardWidget(
-                      isSubmitted: _isSubmitted,
-                      isAwaitingApproval: _isAwaitingApproval,
-                      hasActiveVisitSession: _hasActiveVisitSession,
-                      activeSiteName: _activeSiteName,
-                      isCustomSite: _isCustomSite,
-                      isOptimisticUpdating: _isOptimisticUpdating,
-                      officeTimeIn: _officeTimeIn,
-                      onSiteOut: () => _executeAttendanceAction('siteout'),
-                      onSiteIn: () => _executeAttendanceAction('sitein'),
-                      onDayOut: () => _executeAttendanceAction('dayout'),
-                      onCustomSiteChanged: (val) {
-                        setState(() {
-                          _isCustomSite = val ?? false;
-                          _selectedSiteObject = null;
-                        });
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14.0),
+                    child: RefreshIndicator(
+                      onRefresh: () async {
+                        _lastFetchTime = null;
+                        await _loadScreenData();
                       },
-                      dropdownWidget: SiteDropdownWidget(
-                        siteMasterList: _siteMasterList,
-                        selectedSiteObject: _selectedSiteObject,
-                        onChanged: (Map<String, dynamic>? selectedMap) {
-                          setState(() {
-                            _selectedSiteObject = selectedMap;
-                          });
-                        },
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            if (_isOffline)
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade700,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.wifi_off, color: Colors.white),
+                                    SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Offline mode\nInternet connection unavailable.',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else if (_isPoorNetwork)
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade800,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                        Icons.signal_cellular_connected_no_internet_4_bar,
+                                        color: Colors.white),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Text(
+                                        'Unstable or Poor Network Connection.\nPlease retry or move to a stronger signal area.',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          _checkConnectivityOnResume(),
+                                      child: const Text('RETRY',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                            ProfileHeaderWidget(
+                              authProvider: authProvider,
+                              status: status,
+                              statusColor: statusColor,
+                            ),
+                            const SizedBox(height: 20),
+
+                            HeaderDashboardWidget(
+                              authProvider: authProvider,
+                              width: screenWidth,
+                              isAwaitingApproval: _isAwaitingApproval,
+                            ),
+                            const SizedBox(height: 20),
+
+                            if (_isAwaitingApproval)
+                              const ApprovalWarningWidget(),
+
+                            ActionCardWidget(
+                              isSubmitted: _isSubmitted,
+                              isAwaitingApproval: _isAwaitingApproval,
+                              hasActiveVisitSession: _hasActiveVisitSession,
+                              activeSiteName: _activeSiteName,
+                              isCustomSite: _isCustomSite,
+                              isOptimisticUpdating: _isOptimisticUpdating,
+                              officeTimeIn: _officeTimeIn,
+                              onSiteOut: () =>
+                                  _executeAttendanceAction('siteout'),
+                              onSiteIn: () =>
+                                  _executeAttendanceAction('sitein'),
+                              onDayOut: () =>
+                                  _executeAttendanceAction('dayout'),
+                              onCustomSiteChanged: (val) {
+                                setState(() {
+                                  _isCustomSite = val ?? false;
+                                  _selectedSiteObject = null;
+                                });
+                              },
+                              dropdownWidget: SiteDropdownWidget(
+                                siteMasterList: _siteMasterList,
+                                selectedSiteObject: _selectedSiteObject,
+                                onChanged: (Map<String, dynamic>? selectedMap) {
+                                  setState(() {
+                                    _selectedSiteObject = selectedMap;
+                                  });
+                                },
+                              ),
+                              remarksController: _remarksController,
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            LogStatusCardWidget(
+                              title: 'First Check-In (Shift Start)',
+                              timestamp: _officeTimeIn,
+                              isAwaitingApproval: _isAwaitingApproval,
+                            ),
+                            const SizedBox(height: 10),
+
+                            LogStatusCardWidget(
+                              title: 'Final Check-Out (Shift Closed)',
+                              timestamp: _officeTimeOut,
+                              isAwaitingApproval: _isAwaitingApproval,
+                            ),
+                          ],
+                        ),
                       ),
-                      remarksController: _remarksController,
                     ),
-                    
-                    const SizedBox(height: 20),
-                    
-                    LogStatusCardWidget(
-                      title: 'First Check-In (Shift Start)',
-                      timestamp: _officeTimeIn,
-                      isAwaitingApproval: _isAwaitingApproval,
-                    ),
-                    const SizedBox(height: 10),
-                    
-                    LogStatusCardWidget(
-                      title: 'Final Check-Out (Shift Closed)',
-                      timestamp: _officeTimeOut,
-                      isAwaitingApproval: _isAwaitingApproval,
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
     );
-  }
-}
+  }}

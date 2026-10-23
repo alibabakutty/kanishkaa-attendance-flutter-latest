@@ -57,7 +57,7 @@ class ProfileHeaderWidget extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${authProvider.employeeId ?? ''} - ${authProvider.username ?? ''}',
+                '${authProvider.employeeId ?? ''} ${authProvider.username ?? ''}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const Text(
@@ -180,6 +180,19 @@ class ApprovalWarningWidget extends StatelessWidget {
 }
 
 class ActionCardWidget extends StatelessWidget {
+  String get currentShift {
+    final now = DateTime.now();
+    final currentMinutes = now.hour * 60 + now.minute;
+
+    const dayShiftStart = 9 * 60;  // 09:00 AM
+    const nightShiftStart = 21 * 60; // 09:00 PM
+
+    return currentMinutes >= dayShiftStart &&
+            currentMinutes < nightShiftStart
+        ? 'Day Shift'
+        : 'Night Shift';
+  }
+
   final bool isSubmitted;
   final bool isAwaitingApproval;
   final bool hasActiveVisitSession;
@@ -221,22 +234,59 @@ class ActionCardWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              isSubmitted
-                  ? "Shift Ended"
-                  : (hasActiveVisitSession
-                      ? "Active Site Session"
-                      : (isAwaitingApproval
-                          ? "Late Check-In (Pending Approval)"
-                          : "Ready to Check-In")),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    isSubmitted
+                        ? 'Shift Ended'
+                        : hasActiveVisitSession
+                            ? 'Active Site Session'
+                            : isAwaitingApproval
+                                ? 'Late Check-In (Pending Approval)'
+                                : 'Ready to Check-In',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: currentShift == 'Day Shift'
+                        ? Colors.orange.shade50
+                        : Colors.indigo.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: currentShift == 'Day Shift'
+                          ? Colors.orange
+                          : Colors.indigo,
+                    ),
+                  ),
+                  child: Text(
+                    currentShift,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: currentShift == 'Day Shift'
+                          ? Colors.deepOrange.shade700
+                          : Colors.indigo.shade700,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const Divider(),
 
             // PRIORITIZE ACTIVE VISIT: Always let user check out of a site even if approval is pending!
             if (hasActiveVisitSession) ...[
               _buildActiveSessionState(),
-            ] else if (!isSubmitted) ...[
+            ] else if (!isSubmitted && !isAwaitingApproval) ...[
               _buildCheckInState(),
             ],
 
@@ -389,7 +439,6 @@ class SiteDropdownWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Safely resolve selected object by matching siteId
     Map<String, dynamic>? matchedValue;
     if (selectedSiteObject != null) {
       matchedValue = siteMasterList.firstWhere(
@@ -400,21 +449,49 @@ class SiteDropdownWidget extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: Colors.grey.shade400),
-        borderRadius: BorderRadius.circular(6),
+        // Overall outer border for the dropdown box
+        border: Border.all(color: Colors.grey.shade400, width: 1.0),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<Map<String, dynamic>>(
           value: matchedValue,
           hint: const Text('Select Target Workspace Location'),
           isExpanded: true,
+          itemHeight: 48.0, // Reduced item height for a thin, compact row
           items: siteMasterList.map((siteMap) {
             return DropdownMenuItem<Map<String, dynamic>>(
               value: siteMap,
-              child: Text('[${siteMap['siteId']}] ${siteMap['siteName']}'),
+              child: Container(
+                width: double.infinity,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
+                // Single bottom border line per site to avoid double-thick borders
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade300, width: 1.0),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '[${siteMap['siteId']}] ${siteMap['siteName']}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis, // Cleanly truncate long text with ...
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             );
           }).toList(),
           onChanged: onChanged,

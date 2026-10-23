@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:async';
 import 'package:attendance_app/modals/cumulative_attendance_model.dart';
+import 'package:attendance_app/modals/mark_attendance/mark_attendance_data.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:attendance_app/modals/mark_attendance_data.dart';
 
 class AttendanceService {
   final String baseUrl;
@@ -242,20 +242,20 @@ class AttendanceService {
   }
 
     // Legacy method for fetching today attendance (returns Map, not MarkAttendanceData)
-  Future<Map<String, dynamic>> fetchTodayAttendanceLegacy(String employeeName) async {
-    final url = Uri.parse("$baseUrl/api/v1/attendance-masters/today/$employeeName");
-    
-    final response = await http.get(
-      url,
-      headers: await _headers(),
-    ).timeout(const Duration(seconds: 8));
+    Future<Map<String, dynamic>> fetchTodayAttendanceLegacy(String employeeName) async {
+      final url = Uri.parse("$baseUrl/api/v1/attendance-masters/today/$employeeName");
+      
+      final response = await http.get(
+        url,
+        headers: await _headers(),
+      ).timeout(const Duration(seconds: 8));
 
-    if (response.statusCode != 200 || response.body.trim().isEmpty) {
-      throw Exception('Failed to fetch attendance data');
+      if (response.statusCode != 200 || response.body.trim().isEmpty) {
+        throw Exception('Failed to fetch attendance data');
+      }
+
+      return jsonDecode(response.body);
     }
-
-    return jsonDecode(response.body);
-  }
 
   // Legacy method for fetching site names (returns List<Map>)
   Future<List<Map<String, dynamic>>> fetchSiteNamesLegacy() async {

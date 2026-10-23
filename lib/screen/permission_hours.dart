@@ -16,8 +16,7 @@ class PermissionHours extends StatefulWidget {
 }
 
 class _PermissionHoursState extends State<PermissionHours> {
-  final String baseUrl =
-      dotenv.get('API_BASE_URL', fallback: 'http://192.168.1.3:8080');
+  final String baseUrl = dotenv.get('API_BASE_URL', fallback: 'http://192.168.1.3:8080');
   DateTime? _officeTimeIn;
   DateTime? _officeTimeOut;
   DateTime? _permissionTimeIn;
@@ -26,7 +25,6 @@ class _PermissionHoursState extends State<PermissionHours> {
   bool _isLoading = true;
   bool _isSavingIn = false; // Separate loading for Time-In
   bool _isSavingOut = false; // Separate loading for Time-Out
-
   String? employeeImageData;
 
   @override
@@ -41,20 +39,16 @@ class _PermissionHoursState extends State<PermissionHours> {
     if (_officeTimeIn == null) {
       return 'Absent';
     }
-
     // Office in exists, but office out not marked yet
     if (_officeTimeOut == null) {
       return 'In Progress';
     }
-
     // Calculate worked duration
     final workedDuration = _officeTimeOut!.difference(_officeTimeIn!);
-
     // Less than 5 hours = Half-Day
     if (workedDuration.inMinutes < 300) {
       return 'Half-Day';
     }
-
     // 5 hours or more = Present
     return 'Present';
   }
@@ -62,7 +56,6 @@ class _PermissionHoursState extends State<PermissionHours> {
   // =========================
   // FETCH TODAY ATTENDANCE
   // =========================
-
   Future<void> _fetchTodayAttendance() async {
     try {
       final authProvider = Provider.of<AuthProvider>(
@@ -70,43 +63,129 @@ class _PermissionHoursState extends State<PermissionHours> {
         listen: false,
       );
 
+      final username = authProvider.username?.trim() ?? '';
+
+      if (username.isEmpty) {
+        debugPrint('Cannot fetch attendance: username is empty.');
+        return;
+      }
+
       final response = await http.get(
         Uri.parse(
-          '$baseUrl/api/v1/attendance-masters/today/${authProvider.username}',
+          '$baseUrl/api/v1/attendance-masters/today/'
+          '${Uri.encodeComponent(username)}',
         ),
         headers: authProvider.authHeaders,
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      debugPrint(
+        'Today attendance response: ${response.statusCode}',
+      );
 
-        // Grab current date to structure standard format requirements
-        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      // No attendance record yet is a normal situation.
+      // The employee may be recording permission before Day In.
+      if (response.statusCode == 404 ||
+          response.statusCode == 204) {
+        if (!mounted) return;
 
         setState(() {
-          _officeTimeIn = data['officeTimeIn'] != null
-              ? DateTime.parse('$todayStr ${data['officeTimeIn']}')
-              : null;
+          _officeTimeIn = null;
+          _officeTimeOut = null;
+          _permissionTimeIn = null;
+          _permissionTimeOut = null;
+        });
 
-          _officeTimeOut = data['officeTimeOut'] != null
-              ? DateTime.parse('$todayStr ${data['officeTimeOut']}')
-              : null;
+        debugPrint(
+          'No attendance record for today. '
+          'Permission can be recorded before Day In.',
+        );
+        return;
+      }
 
-          _permissionTimeIn = data['permissionTimeIn'] != null
-              ? DateTime.parse('$todayStr ${data['permissionTimeIn']}')
-              : null;
+      if (response.statusCode != 200) {
+        throw Exception(
+          'HTTP ${response.statusCode}: ${response.body}',
+        );
+      }
 
-          _permissionTimeOut = data['permissionTimeOut'] != null
-              ? DateTime.parse('$todayStr ${data['permissionTimeOut']}')
-              : null;
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Invalid attendance response format.',
+        );
+      }
+
+      final data = decoded;
+
+      DateTime? parseAttendanceTime(dynamic value) {
+        if (value == null || value.toString().trim().isEmpty) {
+          return null;
+        }
+
+        final String timeString = value.toString().trim();
+
+        try {
+          // Full timestamp: 2026-10-12T10:00:00
+          if (timeString.contains('T')) {
+            return DateTime.parse(timeString);
+          }
+
+          // Time only: 10:00:00
+          final today = DateFormat('yyyy-MM-dd')
+              .format(DateTime.now());
+
+          return DateTime.parse('${today}T$timeString');
+        } catch (e) {
+          debugPrint(
+            'Unable to parse attendance time '
+            '"$timeString": $e',
+          );
+          return null;
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _officeTimeIn =
+            parseAttendanceTime(data['officeTimeIn']);
+
+        _officeTimeOut =
+            parseAttendanceTime(data['officeTimeOut']);
+
+        _permissionTimeIn =
+            parseAttendanceTime(data['permissionTimeIn']);
+
+        _permissionTimeOut =
+            parseAttendanceTime(data['permissionTimeOut']);
+      });
+
+      debugPrint('Office In: $_officeTimeIn');
+      debugPrint('Office Out: $_officeTimeOut');
+      debugPrint('Permission In: $_permissionTimeIn');
+      debugPrint('Permission Out: $_permissionTimeOut');
+    } catch (e, stackTrace) {
+      debugPrint('Fetch Today Attendance Error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
+      // Keep the page usable if attendance cannot be refreshed.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Attendance could not be refreshed. '
+              'Please check your connection and retry.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
         });
       }
-    } catch (e) {
-      debugPrint('Fetch Attendance Error: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
